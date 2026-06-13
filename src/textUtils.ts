@@ -1,4 +1,5 @@
 import type { App, TFile } from "obsidian";
+import { Platform } from "obsidian";
 import { getEditorForFile } from "./fileUtils";
 
 export function getHeadingLevel(line = ""): number | null {
@@ -32,7 +33,7 @@ export function groupBy<T>(
 }
 
 export function isMacOS(): boolean {
-  return navigator.appVersion.indexOf("Mac") !== -1;
+  return Platform.isMacOS;
 }
 
 export async function updateSection(
@@ -67,9 +68,6 @@ export async function updateSection(
 
   const editor = getEditorForFile(app, file);
   if (editor) {
-    // if the "## Logbook" header exists, we just replace the
-    // section. If it doesn't, we need to append it to the end
-    // if the file and add `\n` for separation.
     if (logbookSectionLineNum !== -1) {
       const currentSection = fileLines
         .slice(
@@ -89,16 +87,14 @@ export async function updateSection(
           : { line: fileLines.length, ch: 0 };
       editor.replaceRange(`${sectionContents}\n`, from, to);
       return true;
-    } else {
-      const pos = { line: fileLines.length, ch: 0 };
-      editor.replaceRange(`\n\n${sectionContents}`, pos, pos);
-      return true;
     }
+
+    const pos = { line: fileLines.length, ch: 0 };
+    editor.replaceRange(`\n\n${sectionContents}`, pos, pos);
+    return true;
   }
 
-  // Editor is not open, modify the file on disk...
   if (logbookSectionLineNum !== -1) {
-    // Section already exists, just replace
     const prefix = fileLines.slice(0, logbookSectionLineNum);
     const suffix =
       nextSectionLineNum !== -1 ? fileLines.slice(nextSectionLineNum) : [];
@@ -114,19 +110,12 @@ export async function updateSection(
       return false;
     }
 
-    await vault.process(
-      file,
-      () => [...prefix, sectionContents, ...suffix].join("\n")
-    );
-    return true;
-  } else {
-    // Section does not exist, append to end of file.
-    await vault.process(
-      file,
-      () => [...fileLines, "", sectionContents].join("\n")
-    );
+    await vault.process(file, () => [...prefix, sectionContents, ...suffix].join("\n"));
     return true;
   }
+
+  await vault.process(file, () => [...fileLines, "", sectionContents].join("\n"));
+  return true;
 }
 
 export function getSectionContents(
