@@ -1,7 +1,6 @@
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import typescript from "@rollup/plugin-typescript";
-import { env } from "process";
 
 export default {
   input: "src/index.ts",
@@ -9,10 +8,11 @@ export default {
     format: "cjs",
     file: "main.js",
     exports: "default",
+    sourcemap: "inline",
   },
   external: ["obsidian", "child_process", "fs", "os", "path"],
   plugins: [
-    typescript({ include: ["src/**/*.ts"], sourceMap: env.env === "DEV" }),
+    typescript({ include: ["src/**/*.ts"] }),
     resolve({
       browser: true,
     }),

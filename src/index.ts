@@ -10,6 +10,7 @@ import {
   getAllDailyNotes,
   getDailyNote,
 } from "obsidian-daily-notes-interface";
+import type { Moment } from "moment";
 
 import { getMoment, type MomentLike } from "./moment";
 import { ConfirmationModal } from "./modal";
@@ -122,20 +123,14 @@ export default class ThingsToolkitPlugin extends Plugin {
     this.addSettingTab(this.settingsTab);
 
     if (this.options.hasAcceptedDisclaimer && this.options.isSyncEnabled) {
-      if (this.app.workspace.layoutReady) {
+      this.app.workspace.onLayoutReady(() => {
         this.scheduleNextSync();
-      } else {
-        this.registerEvent(
-          this.app.workspace.on("layout-ready", () => {
-            this.scheduleNextSync();
-          })
-        );
-      }
+      });
     }
   }
 
   async activateReviewView(): Promise<void> {
-    let leaf = this.app.workspace.getLeavesOfType(
+    let leaf: WorkspaceLeaf | null | undefined = this.app.workspace.getLeavesOfType(
       VIEW_TYPE_THINGS_TOOLKIT_REVIEW
     )[0];
 
@@ -247,10 +242,10 @@ export default class ThingsToolkitPlugin extends Plugin {
 
       for (const [dateStr, groupedTasks] of dayEntries) {
         const date = moment(dateStr);
-        let dailyNote = getDailyNote(date, dailyNotes);
+        let dailyNote = getDailyNote(date as unknown as Moment, dailyNotes);
 
         if (!dailyNote) {
-          dailyNote = await createDailyNote(date);
+          dailyNote = await createDailyNote(date as unknown as Moment);
         }
 
         if (!isTFile(dailyNote)) {
@@ -362,7 +357,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       date.add(1, "day")
     ) {
       const dateKey = getDateKey(date);
-      const dailyNote = getDailyNote(date, dailyNotes);
+      const dailyNote = getDailyNote(date as unknown as Moment, dailyNotes);
 
       if (!isTFile(dailyNote)) {
         dailyStats[dateKey] = {
@@ -431,10 +426,10 @@ export default class ThingsToolkitPlugin extends Plugin {
     const moment = getMoment();
     const date = moment(dateKey, "YYYY-MM-DD");
     const dailyNotes = getAllDailyNotes();
-    let dailyNote = getDailyNote(date, dailyNotes);
+    let dailyNote = getDailyNote(date as unknown as Moment, dailyNotes);
 
     if (!dailyNote) {
-      dailyNote = await createDailyNote(date);
+      dailyNote = await createDailyNote(date as unknown as Moment);
     }
 
     if (!isTFile(dailyNote)) {

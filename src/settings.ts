@@ -178,7 +178,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
           .addOption("applescript", "AppleScript")
           .addOption("sqlite", "SQLite only");
         dropdown.setValue(this.plugin.options.thingsAccessMode);
-        dropdown.onChange(async (thingsAccessMode: ThingsAccessMode) => {
+        dropdown.onChange(async (value: string) => {
+          const thingsAccessMode = value as ThingsAccessMode;
           await this.plugin.writeOptions({ thingsAccessMode });
           this.display();
         });

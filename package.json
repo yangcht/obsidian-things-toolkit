@@ -1,6 +1,7 @@
 {
   "name": "obsidian-things-toolkit-plugin",
-  "version": "1.0.0",
+  "version": "1.2.0",
+  "type": "module",
   "description": "Sync Things3 completions into Obsidian daily notes with review stats",
   "author": "yangcht",
   "main": "main.js",
@@ -18,12 +19,16 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-typescript": "^12.3.0",
     "@types/node": "latest",
     "@types/papaparse": "5.3.1",
     "@typescript-eslint/eslint-plugin": "latest",
     "@typescript-eslint/parser": "latest",
     "eslint": "latest",
     "obsidian": "latest",
+    "rollup": "^4.62.0",
     "typescript": "latest",
     "typescript-eslint": "^8.61.0"
   }
