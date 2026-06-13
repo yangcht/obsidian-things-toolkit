@@ -55,7 +55,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   hasAcceptedDisclaimer: false,
   latestSyncTime: 0,
   appleScriptFallbackLookbackDays: DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS,
-  thingsAccessMode: "auto" as ThingsAccessMode,
+  thingsAccessMode: "auto",
   thingsAccessStatus: undefined,
   reviewWindowDays: DEFAULT_REVIEW_WINDOW_DAYS,
   dailyStats: {},
@@ -113,9 +113,9 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       )
       .addText((textfield) => {
         textfield.setValue(this.plugin.options.sectionHeading);
-        textfield.onChange(async (rawSectionHeading) => {
+        textfield.onChange((rawSectionHeading) => {
           const sectionHeading = this.normalizeSectionHeading(rawSectionHeading);
-          this.plugin.writeOptions({ sectionHeading });
+          void this.plugin.writeOptions({ sectionHeading });
         });
       });
   }
@@ -130,12 +130,16 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         textfield.setValue(String(this.plugin.options.reviewWindowDays));
         textfield.inputEl.type = "number";
         textfield.inputEl.onblur = (e: FocusEvent) => {
+          const target = e.target;
+          if (!(target instanceof HTMLInputElement)) {
+            return;
+          }
           const reviewWindowDays = Math.max(
             30,
-            Math.floor(Number((<HTMLInputElement>e.target).value) || DEFAULT_REVIEW_WINDOW_DAYS)
+            Math.floor(Number(target.value) || DEFAULT_REVIEW_WINDOW_DAYS)
           );
           textfield.setValue(String(reviewWindowDays));
-          this.plugin.writeOptions({ reviewWindowDays });
+          void this.plugin.writeOptions({ reviewWindowDays });
         };
       });
   }
@@ -156,8 +160,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       .setName("Enable periodic syncing")
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.options.isSyncEnabled);
-        toggle.onChange(async (isSyncEnabled) => {
-          this.plugin.writeOptions({ isSyncEnabled });
+        toggle.onChange((isSyncEnabled) => {
+          void this.plugin.writeOptions({ isSyncEnabled });
         });
       });
   }
@@ -218,8 +222,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       .setDesc('Includes MD notes of a task into the synced Obsidian document')
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.options.doesSyncNoteBody);
-        toggle.onChange(async (doesSyncNoteBody) => {
-          this.plugin.writeOptions({ doesSyncNoteBody })
+        toggle.onChange((doesSyncNoteBody) => {
+          void this.plugin.writeOptions({ doesSyncNoteBody });
         });
       });
   }
@@ -230,8 +234,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         .setDesc("If the Things task belongs to a project, use project name as header instead of area")
         .addToggle((toggle) => {
           toggle.setValue(this.plugin.options.doesSyncProject);
-          toggle.onChange(async (doesSyncProject) => {
-            this.plugin.writeOptions({ doesSyncProject })
+          toggle.onChange((doesSyncProject) => {
+            void this.plugin.writeOptions({ doesSyncProject });
           });
         });
   }
@@ -244,12 +248,16 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         textfield.setValue(String(this.plugin.options.syncInterval));
         textfield.inputEl.type = "number";
         textfield.inputEl.onblur = (e: FocusEvent) => {
+          const target = e.target;
+          if (!(target instanceof HTMLInputElement)) {
+            return;
+          }
           const syncInterval = Math.max(
             60,
-            Math.floor(Number((<HTMLInputElement>e.target).value) || DEFAULT_SYNC_FREQUENCY_SECONDS)
+            Math.floor(Number(target.value) || DEFAULT_SYNC_FREQUENCY_SECONDS)
           );
           textfield.setValue(String(syncInterval));
-          this.plugin.writeOptions({ syncInterval });
+          void this.plugin.writeOptions({ syncInterval });
         };
       });
   }
@@ -264,12 +272,16 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         textfield.setValue(String(this.plugin.options.appleScriptFallbackLookbackDays));
         textfield.inputEl.type = "number";
         textfield.inputEl.onblur = (e: FocusEvent) => {
+          const target = e.target;
+          if (!(target instanceof HTMLInputElement)) {
+            return;
+          }
           const appleScriptFallbackLookbackDays = Math.max(
             1,
-            Math.floor(Number((<HTMLInputElement>e.target).value) || DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS)
+            Math.floor(Number(target.value) || DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS)
           );
           textfield.setValue(String(appleScriptFallbackLookbackDays));
-          this.plugin.writeOptions({ appleScriptFallbackLookbackDays });
+          void this.plugin.writeOptions({ appleScriptFallbackLookbackDays });
         };
       });
   }
@@ -282,8 +294,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       )
       .addText((textfield) => {
         textfield.setValue(this.plugin.options.tagPrefix);
-        textfield.onChange(async (tagPrefix) => {
-          this.plugin.writeOptions({ tagPrefix });
+        textfield.onChange((tagPrefix) => {
+          void this.plugin.writeOptions({ tagPrefix });
         });
       });
   }
@@ -296,8 +308,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         )
         .addText((textfield) => {
           textfield.setValue(this.plugin.options.canceledMark);
-          textfield.onChange(async (canceledMark) => {
-            this.plugin.writeOptions({ canceledMark });
+          textfield.onChange((canceledMark) => {
+            void this.plugin.writeOptions({ canceledMark });
           });
         });
   }
@@ -308,8 +320,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         .setDesc("When grouping tasks with headings by area or project, add an empty line before that heading")
         .addToggle((toggle) => {
           toggle.setValue(this.plugin.options.doesAddNewlineBeforeHeadings);
-          toggle.onChange(async (doesAddNewlineBeforeHeadings) => {
-            this.plugin.writeOptions({ doesAddNewlineBeforeHeadings });
+          toggle.onChange((doesAddNewlineBeforeHeadings) => {
+            void this.plugin.writeOptions({ doesAddNewlineBeforeHeadings });
           });
         });
   }
@@ -344,8 +356,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
           button.setButtonText('Reset sync history');
           button.setClass('mod-danger');
           button.setDisabled(syncStatus.isSyncing);
-          button.onClick(async () => {
-            await this.plugin.writeOptions({ latestSyncTime: 0 });
+          button.onClick(() => {
+            void this.plugin.writeOptions({ latestSyncTime: 0 });
             this.display();
           });
         })

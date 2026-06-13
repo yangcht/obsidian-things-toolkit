@@ -37,22 +37,6 @@ import {
   updateSection,
 } from "./textUtils";
 
-type ReviewLeaf = WorkspaceLeaf & {
-  setViewState(state: { type: string; active: boolean }): Promise<void>;
-  openFile(file: TFile): Promise<void>;
-};
-
-type WorkspaceWithHelpers = typeof app.workspace & {
-  getLeavesOfType(type: string): WorkspaceLeaf[];
-  getRightLeaf(split: boolean): WorkspaceLeaf | null;
-  revealLeaf(leaf: WorkspaceLeaf): Promise<void>;
-  getLeaf(newLeaf?: boolean): WorkspaceLeaf;
-};
-
-function getWorkspace(plugin: Plugin): WorkspaceWithHelpers {
-  return plugin.app.workspace as WorkspaceWithHelpers;
-}
-
 function isTFile(file: unknown): file is TFile {
   return file instanceof TFile;
 }
@@ -72,13 +56,16 @@ export default class ThingsToolkitPlugin extends Plugin {
     isSyncing: false,
     message: "",
   };
+
   private syncTimeoutId?: number;
   private settingsTab?: ThingsToolkitSettingsTab;
   private statusBarEl?: HTMLElement;
 
   async onload(): Promise<void> {
     if (!Platform.isDesktopApp || !isMacOS()) {
-      console.info("Failed to load Things Toolkit plugin. Platform not supported");
+      console.info(
+        "Failed to load Things Toolkit plugin. Platform not supported"
+      );
       return;
     }
 
@@ -95,10 +82,13 @@ export default class ThingsToolkitPlugin extends Plugin {
     this.addCommand({
       id: "sync",
       name: "Sync",
-      callback: () => window.setTimeout(() => {
-        void this.tryToSyncLogbook();
-      }, 20),
+      callback: () => {
+        window.setTimeout(() => {
+          void this.tryToSyncLogbook();
+        }, 20);
+      },
     });
+
     this.addCommand({
       id: "open-review",
       name: "Open review",
@@ -112,13 +102,16 @@ export default class ThingsToolkitPlugin extends Plugin {
     });
 
     await this.loadOptions();
+
     this.statusBarEl = this.addStatusBarItem();
     this.statusBarEl.addClass("things-toolkit-status");
     this.statusBarEl.addEventListener("click", () => {
       void this.activateReviewView();
     });
+
     this.updateStatusBar();
-    getWorkspace(this).onLayoutReady(() => {
+
+    this.app.workspace.onLayoutReady(() => {
       void this.refreshRecentDailyStats().then(() => {
         this.updateStatusBar();
         this.refreshReviewViews();
@@ -129,11 +122,11 @@ export default class ThingsToolkitPlugin extends Plugin {
     this.addSettingTab(this.settingsTab);
 
     if (this.options.hasAcceptedDisclaimer && this.options.isSyncEnabled) {
-      if (getWorkspace(this).layoutReady) {
+      if (this.app.workspace.layoutReady) {
         this.scheduleNextSync();
       } else {
         this.registerEvent(
-          getWorkspace(this).on("layout-ready", () => {
+          this.app.workspace.on("layout-ready", () => {
             this.scheduleNextSync();
           })
         );
@@ -142,19 +135,24 @@ export default class ThingsToolkitPlugin extends Plugin {
   }
 
   async activateReviewView(): Promise<void> {
-    const workspace = getWorkspace(this);
-    let leaf = workspace.getLeavesOfType(VIEW_TYPE_THINGS_TOOLKIT_REVIEW)[0] as ReviewLeaf | undefined;
+    let leaf = this.app.workspace.getLeavesOfType(
+      VIEW_TYPE_THINGS_TOOLKIT_REVIEW
+    )[0];
+
     if (!leaf) {
-      leaf = workspace.getRightLeaf(false) as ReviewLeaf | null;
+      leaf = this.app.workspace.getRightLeaf(false);
+
       if (!leaf) {
         return;
       }
+
       await leaf.setViewState({
         type: VIEW_TYPE_THINGS_TOOLKIT_REVIEW,
         active: true,
       });
     }
-    await workspace.revealLeaf(leaf);
+
+    await this.app.workspace.revealLeaf(leaf);
   }
 
   async tryToSyncLogbook(): Promise<void> {
@@ -175,7 +173,7 @@ export default class ThingsToolkitPlugin extends Plugin {
     }).open();
   }
 
-  async tryToScheduleSync(): Promise<void> {
+  tryToScheduleSync(): void {
     if (this.options.hasAcceptedDisclaimer) {
       this.scheduleNextSync();
       return;
@@ -200,6 +198,7 @@ export default class ThingsToolkitPlugin extends Plugin {
 
   async syncLogbook(): Promise<void> {
     const moment = getMoment();
+
     if (this.syncStatus.isSyncing) {
       new Notice("Things Toolkit sync already running");
       return;
@@ -214,9 +213,6 @@ export default class ThingsToolkitPlugin extends Plugin {
     const logbookRenderer = new ToolkitRenderer(this.app, this.options);
     const dailyNotes = getAllDailyNotes();
     const latestSyncTime = this.options.latestSyncTime || 0;
-    let taskCount = 0;
-    let dayCount = 0;
-    let changedDayCount = 0;
 
     try {
       const fetchResult = await fetchThingsToolkit(
@@ -230,16 +226,19 @@ export default class ThingsToolkitPlugin extends Plugin {
         fetchResult.taskRecords,
         fetchResult.checklistRecords
       );
-      taskCount = tasks.length;
+      const taskCount = tasks.length;
 
       const daysToTasks: Record<string, ITask[]> = groupBy(
         tasks.filter((task) => task.stopDate),
         (task) => moment.unix(task.stopDate).startOf("day").format()
       );
+
       const dayEntries = Object.entries(daysToTasks).sort(([a], [b]) =>
         moment(a).diff(moment(b))
       );
-      dayCount = dayEntries.length;
+      const dayCount = dayEntries.length;
+      let changedDayCount = 0;
+
       const dailyStats = this.buildDailyStats(
         dayEntries,
         fetchResult.source,
@@ -249,6 +248,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       for (const [dateStr, groupedTasks] of dayEntries) {
         const date = moment(dateStr);
         let dailyNote = getDailyNote(date, dailyNotes);
+
         if (!dailyNote) {
           dailyNote = await createDailyNote(date);
         }
@@ -263,6 +263,7 @@ export default class ThingsToolkitPlugin extends Plugin {
           this.options.sectionHeading,
           logbookRenderer.render(groupedTasks)
         );
+
         if (didChange) {
           changedDayCount++;
         }
@@ -274,24 +275,34 @@ export default class ThingsToolkitPlugin extends Plugin {
         thingsAccessStatus: fetchResult.accessStatus,
       });
 
+      const repairLookbackDays =
+        fetchResult.repairLookbackDays ||
+        (fetchResult.source === "applescript"
+          ? this.options.appleScriptFallbackLookbackDays
+          : this.getReviewWindowDayCount());
+
       const sourceLabel =
         fetchResult.source === "applescript"
-          ? `Things AppleScript, repairing last ${fetchResult.repairLookbackDays || this.options.appleScriptFallbackLookbackDays} days`
-          : `Things SQLite, repairing last ${fetchResult.repairLookbackDays || this.getReviewWindowDayCount()} days`;
+          ? `Things AppleScript, repairing last ${repairLookbackDays} days`
+          : `Things SQLite, repairing last ${repairLookbackDays} days`;
+
       this.syncStatus = {
         isSyncing: false,
         message: `Last result: ${taskCount} tasks, ${changedDayCount}/${dayCount} notes updated via ${sourceLabel}. ${fetchResult.accessStatus.message}`,
       };
+
       new Notice(
         `Things Toolkit sync complete (${taskCount} tasks, ${changedDayCount} notes updated)`
       );
     } catch (err) {
       console.error("[Things Toolkit] Sync failed", err);
+
       const errorMessage = err instanceof Error ? err.message : String(err);
       this.syncStatus = {
         isSyncing: false,
         message: `Last result: sync failed. ${errorMessage}`,
       };
+
       new Notice("Things Toolkit sync failed");
     } finally {
       await this.refreshRecentDailyStats();
@@ -308,15 +319,20 @@ export default class ThingsToolkitPlugin extends Plugin {
     syncedAt: number
   ): Record<string, IDailyLogbookStat> {
     const moment = getMoment();
-    const dailyStats = { ...(this.options.dailyStats || {}) };
+    const dailyStats: Record<string, IDailyLogbookStat> = {
+      ...(this.options.dailyStats || {}),
+    };
+
     dayEntries.forEach(([dateStr, tasks]) => {
       const dateKey = moment(dateStr).format("YYYY-MM-DD");
+
       dailyStats[dateKey] = {
         taskCount: tasks.length,
         source,
         syncedAt,
       };
     });
+
     return dailyStats;
   }
 
@@ -328,17 +344,26 @@ export default class ThingsToolkitPlugin extends Plugin {
     return Math.max(7, Math.floor(Number(this.options.reviewWindowDays) || 365));
   }
 
-  async refreshRecentDailyStats(dayCount = this.getReviewWindowDayCount()): Promise<void> {
+  async refreshRecentDailyStats(
+    dayCount = this.getReviewWindowDayCount()
+  ): Promise<void> {
     const moment = getMoment();
-    const dailyStats = { ...(this.options.dailyStats || {}) };
+    const dailyStats: Record<string, IDailyLogbookStat> = {
+      ...(this.options.dailyStats || {}),
+    };
     const dailyNotes = getAllDailyNotes();
     const syncedAt = moment().unix();
     const end = moment().startOf("day");
     const start = end.clone().subtract(dayCount - 1, "days");
 
-    for (let date = start.clone(); date.isSameOrBefore(end); date.add(1, "day")) {
+    for (
+      let date = start.clone();
+      date.isSameOrBefore(end);
+      date.add(1, "day")
+    ) {
       const dateKey = getDateKey(date);
       const dailyNote = getDailyNote(date, dailyNotes);
+
       if (!isTFile(dailyNote)) {
         dailyStats[dateKey] = {
           taskCount: 0,
@@ -350,7 +375,10 @@ export default class ThingsToolkitPlugin extends Plugin {
 
       const fileContents = await this.app.vault.read(dailyNote);
       dailyStats[dateKey] = {
-        taskCount: countThingsTasksInSection(fileContents, this.options.sectionHeading),
+        taskCount: countThingsTasksInSection(
+          fileContents,
+          this.options.sectionHeading
+        ),
         source: "daily-note",
         syncedAt,
       };
@@ -362,6 +390,7 @@ export default class ThingsToolkitPlugin extends Plugin {
   getCurrentCompletionStreak(): number {
     const moment = getMoment();
     let streak = 0;
+
     for (
       let date = moment().startOf("day");
       this.getTaskCountForDay(getDateKey(date)) > 0;
@@ -369,6 +398,7 @@ export default class ThingsToolkitPlugin extends Plugin {
     ) {
       streak++;
     }
+
     return streak;
   }
 
@@ -377,17 +407,22 @@ export default class ThingsToolkitPlugin extends Plugin {
     diff: Partial<IDailyLogbookReview>
   ): Promise<void> {
     const moment = getMoment();
-    const dailyReviews = { ...(this.options.dailyReviews || {}) };
-    const nextReview = {
+    const dailyReviews: Record<string, IDailyLogbookReview> = {
+      ...(this.options.dailyReviews || {}),
+    };
+
+    const nextReview: IDailyLogbookReview = {
       ...(dailyReviews[dateKey] || {}),
       ...diff,
       updatedAt: moment().unix(),
     };
+
     if (!nextReview.rating && !nextReview.reflection) {
       delete dailyReviews[dateKey];
     } else {
       dailyReviews[dateKey] = nextReview;
     }
+
     await this.writeOptions({ dailyReviews });
     this.refreshReviewViews();
   }
@@ -397,27 +432,35 @@ export default class ThingsToolkitPlugin extends Plugin {
     const date = moment(dateKey, "YYYY-MM-DD");
     const dailyNotes = getAllDailyNotes();
     let dailyNote = getDailyNote(date, dailyNotes);
+
     if (!dailyNote) {
       dailyNote = await createDailyNote(date);
     }
+
     if (!isTFile(dailyNote)) {
       throw new Error("Daily note could not be opened as a file");
     }
-    await (getWorkspace(this).getLeaf(false) as ReviewLeaf).openFile(dailyNote);
+
+    await this.app.workspace.getLeaf(false).openFile(dailyNote);
   }
 
   refreshReviewViews(): void {
-    getWorkspace(this)
-      .getLeavesOfType(VIEW_TYPE_THINGS_TOOLKIT_REVIEW)
-      .forEach((leaf) => {
-        if (leaf.view instanceof ThingsToolkitReviewView) {
-          leaf.view.display();
-        }
-      });
+    const leaves: WorkspaceLeaf[] = this.app.workspace.getLeavesOfType(
+      VIEW_TYPE_THINGS_TOOLKIT_REVIEW
+    );
+
+    leaves.forEach((leaf: WorkspaceLeaf) => {
+      const view = leaf.view;
+
+      if (view instanceof ThingsToolkitReviewView) {
+        view.display();
+      }
+    });
   }
 
   updateStatusBar(): void {
     const moment = getMoment();
+
     if (!this.statusBarEl) {
       return;
     }
@@ -425,6 +468,7 @@ export default class ThingsToolkitPlugin extends Plugin {
     const todayKey = moment().format("YYYY-MM-DD");
     const todayCount = this.getTaskCountForDay(todayKey);
     const streak = this.getCurrentCompletionStreak();
+
     this.statusBarEl.setText(`Things: ${todayCount} today | ${streak}d streak`);
     this.statusBarEl.setAttribute("aria-label", "Open Things toolkit review");
   }
@@ -432,6 +476,7 @@ export default class ThingsToolkitPlugin extends Plugin {
   cancelScheduledSync(): void {
     if (this.syncTimeoutId !== undefined) {
       window.clearTimeout(this.syncTimeoutId);
+      this.syncTimeoutId = undefined;
     }
   }
 
@@ -440,6 +485,7 @@ export default class ThingsToolkitPlugin extends Plugin {
     const now = moment().unix();
 
     this.cancelScheduledSync();
+
     if (!this.options.isSyncEnabled || !this.options.syncInterval) {
       console.debug("[Things Toolkit] scheduling skipped, no syncInterval set");
       return;
@@ -450,13 +496,20 @@ export default class ThingsToolkitPlugin extends Plugin {
     const nextSync = Math.max(secondsUntilNextSync * 1000, 20);
 
     console.debug(`[Things Toolkit] next sync scheduled in ${nextSync}ms`);
+
     this.syncTimeoutId = window.setTimeout(() => {
       void this.syncLogbook();
     }, nextSync);
   }
 
   async loadOptions(): Promise<void> {
-    this.options = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()) as ISettings;
+    const loadedData = (await this.loadData()) as Partial<ISettings> | null;
+
+    this.options = {
+      ...DEFAULT_SETTINGS,
+      ...(loadedData ?? {}),
+    };
+
     if (!this.options.hasAcceptedDisclaimer) {
       this.options.isSyncEnabled = false;
     }
@@ -467,12 +520,12 @@ export default class ThingsToolkitPlugin extends Plugin {
 
     if (diff.isSyncEnabled !== undefined) {
       if (diff.isSyncEnabled) {
-        await this.tryToScheduleSync();
+        this.tryToScheduleSync();
       } else {
         this.cancelScheduledSync();
       }
     } else if (diff.syncInterval !== undefined && this.options.isSyncEnabled) {
-      await this.tryToScheduleSync();
+      this.tryToScheduleSync();
     }
 
     await this.saveData(this.options);

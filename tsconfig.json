@@ -5,12 +5,15 @@
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
-    "target": "esnext",
-    "allowJs": true,
-    "noImplicitAny": true,
+    "target": "ES2020",
     "moduleResolution": "node",
     "importHelpers": true,
-    "lib": ["dom", "esnext"]
+    "strict": true,
+    "noImplicitAny": true,
+    "types": ["node"],
+    "lib": ["DOM", "ES2020"],
+    "skipLibCheck": true
   },
-  "include": ["**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "main.js"]
 }

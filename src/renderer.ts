@@ -75,7 +75,7 @@ export class ToolkitRenderer {
           toHeading(heading, headingLevel + 1, doesAddNewlineBeforeHeadings)
         );
       }
-      output.push(...groupedTasks.map(this.renderTask));
+      output.push(...groupedTasks.map((task) => this.renderTask(task)));
     });
 
     return output.join("\n");

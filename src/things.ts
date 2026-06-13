@@ -2,7 +2,8 @@ import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
 import { spawn } from "child_process";
-import type moment from "moment";
+
+import { getMoment, type MomentLike } from "./moment";
 
 import { THINGS_DB_PATH_START, THINGS_DB_PATH_END } from "./constants";
 import { querySqliteDB } from "./sqlite";
@@ -142,16 +143,17 @@ function buildAccessStatus(
     message,
     source,
     sqliteBlocked,
-    updatedAt: window.moment().unix(),
+    updatedAt: getMoment()().unix(),
   };
 }
 
 function getRepairCutoff(
   latestSyncTime: number,
   repairLookbackDays: number
-): moment.Moment {
-  const incrementalCutoff = window.moment.unix(latestSyncTime).startOf("day");
-  const repairCutoff = window.moment()
+): MomentLike {
+  const moment = getMoment();
+  const incrementalCutoff = moment.unix(latestSyncTime).startOf("day");
+  const repairCutoff = moment()
     .subtract(Math.max(1, Number(repairLookbackDays) || 1), "days")
     .startOf("day");
 
@@ -205,7 +207,8 @@ function getAppleScriptCutoff(
   latestSyncTime: number,
   fallbackLookbackDays: number,
   repairLookbackDays: number
-): moment.Moment {
+): MomentLike {
+  const moment = getMoment();
   const configuredLookbackDays = Math.max(
     1,
     Number(fallbackLookbackDays) || DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS
@@ -218,7 +221,7 @@ function getAppleScriptCutoff(
   const lookbackCutoff = getRepairCutoff(latestSyncTime, lookbackDays);
 
   if (latestSyncTime > 0) {
-    const incrementalCutoff = window.moment.unix(latestSyncTime).startOf("day");
+    const incrementalCutoff = moment.unix(latestSyncTime).startOf("day");
     if (lookbackCutoff.isBefore(incrementalCutoff)) {
       console.debug(
         `[Things Toolkit] repairing the last ${lookbackDays} days from Things AppleScript.`
@@ -234,7 +237,7 @@ function getAppleScriptCutoff(
   return lookbackCutoff;
 }
 
-function buildThingsToolkitAppleScript(cutoff: moment.Moment): string {
+function buildThingsToolkitAppleScript(cutoff: MomentLike): string {
   return `
 set cutoff to current date
 set year of cutoff to ${cutoff.year()}
@@ -302,6 +305,7 @@ async function getTasksFromThingsAppleScript(
   repairLookbackDays: number,
   accessStatus: IThingsAccessStatus
 ): Promise<IThingsToolkitFetchResult> {
+  const moment = getMoment();
   const cutoff = getAppleScriptCutoff(
     latestSyncTime,
     fallbackLookbackDays,
@@ -329,7 +333,7 @@ async function getTasksFromThingsAppleScript(
     source: "applescript",
     cutoffTime: cutoff.unix(),
     isLimited: latestSyncTime === 0,
-    repairLookbackDays: window.moment().startOf("day").diff(cutoff, "days"),
+    repairLookbackDays: moment().startOf("day").diff(cutoff, "days"),
   };
 }
 
@@ -448,9 +452,10 @@ async function getChecklistItemsThingsDb(
 async function getTasksFromThingsSqlite(
   latestSyncTime: number
 ): Promise<ITaskRecord[]> {
+  const moment = getMoment();
   const taskRecords: ITaskRecord[] = [];
   let isSyncCompleted = false;
-  let stopTime = window.moment.unix(latestSyncTime).startOf("day").unix();
+  let stopTime = moment.unix(latestSyncTime).startOf("day").unix();
 
   while (!isSyncCompleted) {
     console.debug("[Things Toolkit] fetching tasks from sqlite db...");
@@ -507,6 +512,7 @@ export async function fetchThingsToolkit(
   accessMode: ThingsAccessMode,
   repairLookbackDays: number
 ): Promise<IThingsToolkitFetchResult> {
+  const moment = getMoment();
   const cutoff = getRepairCutoff(latestSyncTime, repairLookbackDays);
   const cutoffTime = cutoff.unix();
 
@@ -538,11 +544,13 @@ export async function fetchThingsToolkit(
       source: "sqlite",
       cutoffTime,
       isLimited: false,
-      repairLookbackDays: window.moment().startOf("day").diff(cutoff, "days"),
+      repairLookbackDays: moment().startOf("day").diff(cutoff, "days"),
     };
   } catch (err) {
     if (accessMode === "sqlite") {
-      throw new Error(`Things SQLite access failed: ${getErrorMessage(err)}`);
+      throw new Error(`Things SQLite access failed: ${getErrorMessage(err)}`, {
+        cause: err,
+      });
     }
 
     const sqliteBlocked =
@@ -568,7 +576,8 @@ export async function fetchThingsToolkit(
       );
     } catch (appleScriptErr) {
       throw new Error(
-        `Things AppleScript access failed after SQLite was unavailable: ${getErrorMessage(appleScriptErr)}`
+        `Things AppleScript access failed after SQLite was unavailable: ${getErrorMessage(appleScriptErr)}`,
+        { cause: appleScriptErr }
       );
     }
   }

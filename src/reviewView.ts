@@ -1,6 +1,7 @@
-import { ItemView, Notice, WorkspaceLeaf, moment } from "obsidian";
+import { ItemView, Notice, WorkspaceLeaf } from "obsidian";
 
 import type ThingsToolkitPlugin from "./index";
+import { getMoment, type MomentLike } from "./moment";
 import { DayReviewRating } from "./settings";
 
 export const VIEW_TYPE_THINGS_TOOLKIT_REVIEW = "things-toolkit-review";
@@ -14,11 +15,12 @@ const RATING_LABELS: Record<DayReviewRating, string> = {
 export class ThingsToolkitReviewView extends ItemView {
   private plugin: ThingsToolkitPlugin;
   private selectedDate: string;
+  private readonly moment = getMoment();
 
   constructor(leaf: WorkspaceLeaf, plugin: ThingsToolkitPlugin) {
     super(leaf);
     this.plugin = plugin;
-    this.selectedDate = moment().format("YYYY-MM-DD");
+    this.selectedDate = this.moment().format("YYYY-MM-DD");
   }
 
   getViewType(): string {
@@ -49,7 +51,7 @@ export class ThingsToolkitReviewView extends ItemView {
   }
 
   private renderSummary(containerEl: HTMLElement): void {
-    const today = moment().format("YYYY-MM-DD");
+    const today = this.moment().format("YYYY-MM-DD");
     const todayCount = this.plugin.getTaskCountForDay(today);
     const weeklyCount = this.getRecentTaskTotal(7);
     const streak = this.plugin.getCurrentCompletionStreak();
@@ -98,7 +100,7 @@ export class ThingsToolkitReviewView extends ItemView {
 
   private renderSelectedDay(containerEl: HTMLElement): void {
     const dateKey = this.selectedDate;
-    const date = moment(dateKey, "YYYY-MM-DD");
+    const date = this.moment(dateKey, "YYYY-MM-DD");
     const review = this.plugin.options.dailyReviews[dateKey] || {};
     const stat = this.plugin.options.dailyStats[dateKey];
     const detailEl = containerEl.createDiv("things-toolkit-review-detail");
@@ -136,9 +138,10 @@ export class ThingsToolkitReviewView extends ItemView {
       if (review.rating === rating) {
         buttonEl.addClass("is-active");
       }
-      buttonEl.addEventListener("click", async () => {
-        await this.plugin.writeDayReview(dateKey, { rating });
-        this.display();
+      buttonEl.addEventListener("click", () => {
+        void this.plugin.writeDayReview(dateKey, { rating }).then(() => {
+          this.display();
+        });
       });
     });
 
@@ -153,26 +156,27 @@ export class ThingsToolkitReviewView extends ItemView {
     const actionsEl = detailEl.createDiv("things-toolkit-review-actions");
     actionsEl
       .createEl("button", { text: "Save reflection" })
-      .addEventListener("click", async () => {
-        await this.plugin.writeDayReview(dateKey, {
+      .addEventListener("click", () => {
+        void this.plugin.writeDayReview(dateKey, {
           reflection: textareaEl.value.trim(),
+        }).then(() => {
+          new Notice("Things review saved");
+          this.display();
         });
-        new Notice("Things review saved");
-        this.display();
       });
 
     actionsEl
       .createEl("button", { text: "Open daily note" })
-      .addEventListener("click", async () => {
-        await this.plugin.openDailyNote(dateKey);
+      .addEventListener("click", () => {
+        void this.plugin.openDailyNote(dateKey);
       });
   }
 
   private renderMonth(
     containerEl: HTMLElement,
-    month: moment.Moment,
-    startDate: moment.Moment,
-    endDate: moment.Moment
+    month: MomentLike,
+    startDate: MomentLike,
+    endDate: MomentLike
   ): void {
     const monthEl = containerEl.createDiv("things-toolkit-review-month");
     const summary = this.getMonthSummary(month);
@@ -221,7 +225,7 @@ export class ThingsToolkitReviewView extends ItemView {
     }
   }
 
-  private renderCalendarDay(containerEl: HTMLElement, date: moment.Moment): void {
+  private renderCalendarDay(containerEl: HTMLElement, date: MomentLike): void {
     const dateKey = date.format("YYYY-MM-DD");
     const count = this.plugin.getTaskCountForDay(dateKey);
     const review = this.plugin.options.dailyReviews[dateKey];
@@ -252,10 +256,10 @@ export class ThingsToolkitReviewView extends ItemView {
       text: String(count),
     });
 
-    buttonEl.addEventListener("click", async () => {
+    buttonEl.addEventListener("click", () => {
       this.selectedDate = dateKey;
       this.display();
-      await this.plugin.openDailyNote(dateKey);
+      void this.plugin.openDailyNote(dateKey);
     });
   }
 
@@ -275,10 +279,10 @@ export class ThingsToolkitReviewView extends ItemView {
     });
   }
 
-  private getRecentDates(dayCount: number): moment.Moment[] {
-    const end = moment().startOf("day");
+  private getRecentDates(dayCount: number): MomentLike[] {
+    const end = this.moment().startOf("day");
     const start = end.clone().subtract(dayCount - 1, "days");
-    const dates: moment.Moment[] = [];
+    const dates: MomentLike[] = [];
     for (let date = start; date.isSameOrBefore(end); date.add(1, "day")) {
       dates.push(date.clone());
     }
@@ -292,21 +296,21 @@ export class ThingsToolkitReviewView extends ItemView {
     );
   }
 
-  private getWeekTotal(date: moment.Moment): number {
+  private getWeekTotal(date: MomentLike): number {
     return this.sumDateRange(
       date.clone().startOf("isoWeek"),
       date.clone().endOf("isoWeek")
     );
   }
 
-  private getMonthTotal(date: moment.Moment): number {
+  private getMonthTotal(date: MomentLike): number {
     return this.sumDateRange(
       date.clone().startOf("month"),
       date.clone().endOf("month")
     );
   }
 
-  private getMonthActiveDays(date: moment.Moment): number {
+  private getMonthActiveDays(date: MomentLike): number {
     const end = date.clone().endOf("month");
     let activeDays = 0;
     for (
@@ -321,7 +325,7 @@ export class ThingsToolkitReviewView extends ItemView {
     return activeDays;
   }
 
-  private getMonthSummary(month: moment.Moment): {
+  private getMonthSummary(month: MomentLike): {
     activeDays: number;
     bestDay: string;
     total: number;
@@ -351,7 +355,7 @@ export class ThingsToolkitReviewView extends ItemView {
     return { activeDays, bestDay, total };
   }
 
-  private sumDateRange(start: moment.Moment, end: moment.Moment): number {
+  private sumDateRange(start: MomentLike, end: MomentLike): number {
     let total = 0;
     for (
       let date = start.clone().startOf("day");
