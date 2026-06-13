@@ -6,7 +6,7 @@ export const TASK_FETCH_LIMIT = 1000;
 interface ISpawnResults {
   stdOut: Buffer[];
   stdErr: Buffer[];
-  code: number;
+  code: number | null;
 }
 
 function parseCSV<T>(csv: Buffer[]): T[] {
@@ -47,10 +47,10 @@ async function handleSqliteQuery(
     });
 
     spawned.on("error", (err: Error) => {
-      stdErr.push(Buffer.from(String(err.stack), "ascii"));
+      stdErr.push(Buffer.from(err.stack ?? err.message, "utf-8"));
     });
-    spawned.on("close", (code: number) => finish({ stdErr, stdOut, code }));
-    spawned.on("exit", (code: number) => finish({ stdErr, stdOut, code }));
+    spawned.on("close", (code: number | null) => finish({ stdErr, stdOut, code }));
+    spawned.on("exit", (code: number | null) => finish({ stdErr, stdOut, code }));
   });
 }
 
@@ -58,10 +58,10 @@ export async function querySqliteDB<T>(
   dbPath: string,
   query: string
 ): Promise<T[]> {
-  const { stdOut, stdErr } = await handleSqliteQuery(dbPath, query);
-  if (stdErr.length) {
-    const error = Buffer.concat(stdErr).toString("utf-8");
-    return Promise.reject(error);
+  const { stdOut, stdErr, code } = await handleSqliteQuery(dbPath, query);
+  if (stdErr.length || code !== 0) {
+    const error = Buffer.concat(stdErr).toString("utf-8") || `sqlite3 exited with code ${String(code)}`;
+    throw new Error(error);
   }
   return parseCSV<T>(stdOut);
 }

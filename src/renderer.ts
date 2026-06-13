@@ -3,6 +3,15 @@ import { ISettings } from "./settings";
 import { ISubTask, ITask } from "./things";
 import { getHeadingLevel, getTab, groupBy, toHeading } from "./textUtils";
 
+interface VaultConfigReader {
+  getConfig(key: "useTab"): boolean;
+  getConfig(key: "tabSize"): number;
+}
+
+function getVaultConfig(app: App): VaultConfigReader {
+  return app.vault as unknown as VaultConfigReader;
+}
+
 export class ToolkitRenderer {
   private app: App;
   private settings: ISettings;
@@ -14,31 +23,33 @@ export class ToolkitRenderer {
   }
 
   renderTask(task: ITask): string {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const vault = this.app.vault as any;
+    const vault = getVaultConfig(this.app);
     const tab = getTab(vault.getConfig("useTab"), vault.getConfig("tabSize"));
     const prefix = this.settings.tagPrefix;
 
-    const tags = Array.from(new Set(task.tags
-      .filter((tag) => !!tag)
-      .map((tag) => tag.replace(/\s+/g, "-").toLowerCase())
-      .sort()
-    ))
+    const tags = Array.from(
+      new Set(
+        task.tags
+          .filter((tag) => !!tag)
+          .map((tag) => tag.replace(/\s+/g, "-").toLowerCase())
+          .sort()
+      )
+    )
       .map((tag) => `#${prefix}${tag}`)
       .join(" ");
 
-    const taskTitle = `[${task.title}](things:///show?id=${task.uuid}) ${tags}`.trimEnd()
+    const taskTitle = `[${task.title}](things:///show?id=${task.uuid}) ${tags}`.trimEnd();
 
     const notes = this.settings.doesSyncNoteBody
       ? String(task.notes || "")
-        .trimEnd()
-        .split("\n")
-        .filter((line) => !!line)
-        .map((noteLine) => `${tab}${noteLine}`)
-      : ""
+          .trimEnd()
+          .split("\n")
+          .filter((line) => !!line)
+          .map((noteLine) => `${tab}${noteLine}`)
+      : [];
 
     return [
-      `- [${task.cancelled ? this.settings.canceledMark : 'x'}] ${taskTitle}`,
+      `- [${task.cancelled ? this.settings.canceledMark : "x"}] ${taskTitle}`,
       ...notes,
       ...task.subtasks.map(
         (subtask: ISubTask) =>
@@ -51,15 +62,20 @@ export class ToolkitRenderer {
 
   public render(tasks: ITask[]): string {
     const { sectionHeading, doesSyncProject, doesAddNewlineBeforeHeadings } = this.settings;
-    const headings = groupBy<ITask>(tasks, (task) => task.area || (doesSyncProject ? task.project : "") || "");
-    const headingLevel = getHeadingLevel(sectionHeading);
+    const headings = groupBy<ITask>(
+      tasks,
+      (task) => task.area || (doesSyncProject ? task.project : "") || ""
+    );
+    const headingLevel = getHeadingLevel(sectionHeading) ?? 2;
 
     const output = [sectionHeading];
-    Object.entries(headings).map(([heading, tasks]) => {
+    Object.entries(headings).forEach(([heading, groupedTasks]) => {
       if (heading !== "") {
-        output.push(toHeading(heading, headingLevel + 1, doesAddNewlineBeforeHeadings));
+        output.push(
+          toHeading(heading, headingLevel + 1, doesAddNewlineBeforeHeadings)
+        );
       }
-      output.push(...tasks.map(this.renderTask));
+      output.push(...groupedTasks.map(this.renderTask));
     });
 
     return output.join("\n");
