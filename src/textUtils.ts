@@ -1,4 +1,5 @@
 import type { App, TFile } from "obsidian";
+import { Platform } from "obsidian";
 import { getEditorForFile } from "./fileUtils";
 
 export function getHeadingLevel(line = ""): number | null {
@@ -32,7 +33,7 @@ export function groupBy<T>(
 }
 
 export function isMacOS(): boolean {
-  return navigator.userAgent.includes("Mac");
+  return Platform.isMacOS;
 }
 
 export async function updateSection(
