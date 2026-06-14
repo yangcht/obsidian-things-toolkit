@@ -4,8 +4,10 @@ interface DesktopWindow extends Window {
   require?: (moduleName: string) => unknown;
 }
 
+type ModuleRequire = (moduleName: string) => unknown;
+
 declare const require:
-  | ((moduleName: string) => unknown)
+  | ModuleRequire
   | undefined;
 
 export interface ChildProcessLike {
@@ -45,14 +47,30 @@ function requireDesktopModule<T>(moduleName: string): T {
     throw new Error(`${moduleName} is only available in Obsidian desktop`);
   }
 
-  const requireFn =
-    (window as DesktopWindow).require ||
-    (typeof require === "function" ? require : undefined);
-  if (!requireFn) {
+  const requireFns: ModuleRequire[] = [];
+  if (typeof require === "function") {
+    requireFns.push(require);
+  }
+  const windowRequire = (window as DesktopWindow).require;
+  if (typeof windowRequire === "function") {
+    requireFns.push(windowRequire.bind(window));
+  }
+
+  if (requireFns.length === 0) {
     throw new Error("Obsidian desktop require API is unavailable");
   }
 
-  return requireFn(moduleName) as T;
+  let lastError: unknown;
+  for (const requireFn of requireFns) {
+    try {
+      return requireFn(moduleName) as T;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Unable to load ${moduleName}: ${message}`);
 }
 
 export function getChildProcessModule(): ChildProcessModuleLike {

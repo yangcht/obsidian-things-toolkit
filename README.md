@@ -45,6 +45,19 @@ For an Obsidian community plugin release, each GitHub release must include:
 - `styles.css`
 
 The release tag must match the `version` in `manifest.json`.
+Attach these files directly to the release; do not attach `versions.json` or a zip file.
+
+For a new release:
+
+```sh
+npm run release:create
+```
+
+For an existing release:
+
+```sh
+npm run release:upload
+```
 
 ## Attribution
 
