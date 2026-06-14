@@ -14,13 +14,11 @@ const RATING_LABELS: Record<DayReviewRating, string> = {
 
 export class ThingsToolkitReviewView extends ItemView {
   private plugin: ThingsToolkitPlugin;
-  private selectedDate: string;
   private readonly moment = getMoment();
 
   constructor(leaf: WorkspaceLeaf, plugin: ThingsToolkitPlugin) {
     super(leaf);
     this.plugin = plugin;
-    this.selectedDate = this.moment().format("YYYY-MM-DD");
   }
 
   getViewType(): string {
@@ -82,14 +80,35 @@ export class ThingsToolkitReviewView extends ItemView {
 
   private renderCalendar(containerEl: HTMLElement): void {
     const dates = this.getRecentDates(this.plugin.getReviewWindowDayCount());
-    const startDate = dates[0];
-    const endDate = dates[dates.length - 1];
+    let startDate = dates[0];
+    let endDate = dates[dates.length - 1];
+    const selectedDate = this.moment(
+      this.plugin.getSelectedReviewDate(),
+      "YYYY-MM-DD"
+    );
 
     containerEl.createEl("h4", { text: "Review calendar" });
+
+    if (selectedDate.isSame(startDate, "month") && selectedDate.isBefore(startDate, "day")) {
+      startDate = selectedDate.clone();
+    }
+    if (selectedDate.isSame(endDate, "month") && selectedDate.isAfter(endDate, "day")) {
+      endDate = selectedDate.clone();
+    }
+
     containerEl.createDiv({
       cls: "things-toolkit-review-range",
       text: `${startDate.format("MMM D, YYYY")} - ${endDate.format("MMM D, YYYY")}`,
     });
+
+    if (selectedDate.isBefore(startDate, "day")) {
+      this.renderMonth(
+        containerEl,
+        selectedDate.clone().startOf("month"),
+        selectedDate.clone().startOf("month"),
+        selectedDate.clone().endOf("month")
+      );
+    }
 
     for (
       let month = startDate.clone().startOf("month");
@@ -98,10 +117,19 @@ export class ThingsToolkitReviewView extends ItemView {
     ) {
       this.renderMonth(containerEl, month.clone(), startDate, endDate);
     }
+
+    if (selectedDate.isAfter(endDate, "day")) {
+      this.renderMonth(
+        containerEl,
+        selectedDate.clone().startOf("month"),
+        selectedDate.clone().startOf("month"),
+        selectedDate.clone().endOf("month")
+      );
+    }
   }
 
   private renderSelectedDay(containerEl: HTMLElement): void {
-    const dateKey = this.selectedDate;
+    const dateKey = this.plugin.getSelectedReviewDate();
     const date = this.moment(dateKey, "YYYY-MM-DD");
     const review = this.plugin.options.dailyReviews[dateKey] || {};
     const stat = this.plugin.options.dailyStats[dateKey];
@@ -239,7 +267,7 @@ export class ThingsToolkitReviewView extends ItemView {
       `${date.format("MMM D, YYYY")}: ${count} tasks, week ${date.isoWeek()}`
     );
 
-    if (dateKey === this.selectedDate) {
+    if (dateKey === this.plugin.getSelectedReviewDate()) {
       buttonEl.addClass("is-selected");
     }
     if (review?.rating) {
@@ -259,8 +287,7 @@ export class ThingsToolkitReviewView extends ItemView {
     });
 
     buttonEl.addEventListener("click", () => {
-      this.selectedDate = dateKey;
-      this.display();
+      void this.plugin.selectReviewDate(dateKey, { openDailyNote: true });
     });
   }
 

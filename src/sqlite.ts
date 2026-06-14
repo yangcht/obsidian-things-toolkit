@@ -1,15 +1,21 @@
 import Papa from "papaparse";
 
+import { getChildProcessModule } from "./nodeUtils";
+
 export const TASK_FETCH_LIMIT = 1000;
 
 interface ISpawnResults {
-  stdOut: Buffer[];
-  stdErr: Buffer[];
+  stdOut: string[];
+  stdErr: string[];
   code: number | null;
 }
 
-function parseCSV<T>(csv: Buffer[]): T[] {
-  const lines = Buffer.concat(csv).toString("utf-8");
+function chunkToString(chunk: unknown): string {
+  return typeof chunk === "string" ? chunk : String(chunk);
+}
+
+function parseCSV<T>(csv: string[]): T[] {
+  const lines = csv.join("");
   return Papa.parse<T>(lines, {
     dynamicTyping: false,
     header: true,
@@ -21,11 +27,9 @@ async function handleSqliteQuery(
   dbPath: string,
   query: string
 ): Promise<ISpawnResults> {
-  const { spawn } = await import("child_process");
-
   return new Promise((done) => {
-    const stdOut: Buffer[] = [];
-    const stdErr: Buffer[] = [];
+    const stdOut: string[] = [];
+    const stdErr: string[] = [];
     let settled = false;
     const finish = (result: ISpawnResults) => {
       if (!settled) {
@@ -34,21 +38,22 @@ async function handleSqliteQuery(
       }
     };
 
+    const { spawn } = getChildProcessModule();
     const spawned = spawn(
       "sqlite3",
       ["-csv", "-header", "-readonly", dbPath, query],
       { detached: true }
     );
 
-    spawned.stdout.on("data", (buffer: Buffer) => {
-      stdOut.push(buffer);
+    spawned.stdout.on("data", (chunk: unknown) => {
+      stdOut.push(chunkToString(chunk));
     });
-    spawned.stderr.on("data", (buffer: Buffer) => {
-      stdErr.push(buffer);
+    spawned.stderr.on("data", (chunk: unknown) => {
+      stdErr.push(chunkToString(chunk));
     });
 
     spawned.on("error", (err: Error) => {
-      stdErr.push(Buffer.from(err.stack ?? err.message, "utf-8"));
+      stdErr.push(err.stack ?? err.message);
     });
     spawned.on("close", (code: number | null) => finish({ stdErr, stdOut, code }));
     spawned.on("exit", (code: number | null) => finish({ stdErr, stdOut, code }));
@@ -61,7 +66,7 @@ export async function querySqliteDB<T>(
 ): Promise<T[]> {
   const { stdOut, stdErr, code } = await handleSqliteQuery(dbPath, query);
   if (stdErr.length || code !== 0) {
-    const error = Buffer.concat(stdErr).toString("utf-8") || `sqlite3 exited with code ${String(code)}`;
+    const error = stdErr.join("") || `sqlite3 exited with code ${String(code)}`;
     throw new Error(error);
   }
   return parseCSV<T>(stdOut);

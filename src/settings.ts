@@ -8,6 +8,7 @@ import {
   ThingsAccessMode,
   ThingsToolkitSource,
 } from "./things";
+import { getChildProcessModule } from "./nodeUtils";
 
 export const DEFAULT_SECTION_HEADING = "## Things";
 export const DEFAULT_SYNC_FREQUENCY_SECONDS = 30 * 60; // Every 30 minutes
@@ -222,9 +223,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       });
   }
 
-  async openSystemSettings(url: string): Promise<void> {
-    const { spawn } = await import("child_process");
-    spawn("open", [url]);
+  openSystemSettings(url: string): void {
+    getChildProcessModule().spawn("open", [url]);
   }
 
   addDoesSyncNoteBodySetting(): void {

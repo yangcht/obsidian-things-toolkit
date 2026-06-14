@@ -1,6 +1,12 @@
 import { getMoment, type MomentLike } from "./moment";
 
 import { THINGS_DB_PATH_START, THINGS_DB_PATH_END } from "./constants";
+import {
+  getChildProcessModule,
+  getFsModule,
+  getOsModule,
+  getPathModule,
+} from "./nodeUtils";
 import { querySqliteDB } from "./sqlite";
 
 export const TASK_FETCH_LIMIT = 1000;
@@ -89,12 +95,10 @@ class ThingsSqlitePrivacyError extends Error {
   }
 }
 
-async function getThingsSqlitePath(): Promise<string> {
-  const [os, fs, path] = await Promise.all([
-    import("os"),
-    import("fs"),
-    import("path"),
-  ]);
+function getThingsSqlitePath(): string {
+  const os = getOsModule();
+  const fs = getFsModule();
+  const path = getPathModule();
   // Info on how to find the Things db file here:
   // https://culturedcode.com/things/support/articles/2982272/
   const baseDir = THINGS_DB_PATH_START.replace("~", os.homedir());
@@ -121,7 +125,10 @@ async function getThingsSqlitePath(): Promise<string> {
 }
 
 function isFileAccessDeniedError(err: unknown): boolean {
-  const error = err as NodeJS.ErrnoException;
+  const error =
+    err && typeof err === "object"
+      ? (err as { code?: string; message?: string })
+      : undefined;
   return (
     error?.code === "EPERM" ||
     error?.code === "EACCES" ||
@@ -169,12 +176,14 @@ function getLastStopDate<T extends { stopDate: number }>(
   return recordsWithStopDate[recordsWithStopDate.length - 1]?.stopDate ?? null;
 }
 
-async function runAppleScript(script: string): Promise<string> {
-  const { spawn } = await import("child_process");
+function chunkToString(chunk: unknown): string {
+  return typeof chunk === "string" ? chunk : String(chunk);
+}
 
+function runAppleScript(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const stdOut: Buffer[] = [];
-    const stdErr: Buffer[] = [];
+    const stdOut: string[] = [];
+    const stdErr: string[] = [];
     let settled = false;
 
     const finish = (err?: Error) => {
@@ -186,19 +195,20 @@ async function runAppleScript(script: string): Promise<string> {
       if (err) {
         reject(err);
       } else {
-        resolve(Buffer.concat(stdOut).toString("utf-8"));
+        resolve(stdOut.join(""));
       }
     };
 
+    const { spawn } = getChildProcessModule();
     const spawned = spawn("osascript", ["-e", script]);
-    spawned.stdout.on("data", (buffer: Buffer) => stdOut.push(buffer));
-    spawned.stderr.on("data", (buffer: Buffer) => stdErr.push(buffer));
+    spawned.stdout.on("data", (chunk: unknown) => stdOut.push(chunkToString(chunk)));
+    spawned.stderr.on("data", (chunk: unknown) => stdErr.push(chunkToString(chunk)));
     spawned.on("error", finish);
-    spawned.on("close", (code: number) => {
+    spawned.on("close", (code: number | null) => {
       if (code === 0) {
         finish();
       } else {
-        finish(new Error(Buffer.concat(stdErr).toString("utf-8")));
+        finish(new Error(stdErr.join("")));
       }
     });
   });
@@ -397,7 +407,7 @@ async function getTasksFromThingsDb(
   latestSyncTime: number
 ): Promise<ITaskRecord[]> {
   return querySqliteDB<ITaskRecord>(
-    await getThingsSqlitePath(),
+    getThingsSqlitePath(),
     `SELECT
         TMTask.uuid as uuid,
         TMTask.title as title,
@@ -433,7 +443,7 @@ async function getChecklistItemsThingsDb(
   latestSyncTime: number
 ): Promise<IChecklistItemRecord[]> {
   return querySqliteDB<IChecklistItemRecord>(
-    await getThingsSqlitePath(),
+    getThingsSqlitePath(),
     `SELECT
         task as taskId,
         title as title,

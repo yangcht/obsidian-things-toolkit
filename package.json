@@ -1,6 +1,6 @@
 {
   "name": "obsidian-things-toolkit-plugin",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "type": "module",
   "description": "Sync Things3 completions into Obsidian daily notes with review stats",
   "author": "yangcht",
@@ -8,7 +8,8 @@
   "license": "MIT",
   "scripts": {
     "lint": "eslint src/**/*.ts",
-    "build": "npm run lint && rollup -c",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run lint && npm run typecheck && rollup -c",
     "build:nolint": "rollup -c",
     "test:watch": "yarn test -- --watch"
   },

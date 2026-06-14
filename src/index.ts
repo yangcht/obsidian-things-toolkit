@@ -1,4 +1,5 @@
 import {
+  MarkdownView,
   Notice,
   Platform,
   Plugin,
@@ -8,6 +9,7 @@ import {
 import {
   createDailyNote,
   getAllDailyNotes,
+  getDateFromFile,
   getDailyNote,
 } from "obsidian-daily-notes-interface";
 
@@ -65,6 +67,7 @@ export default class ThingsToolkitPlugin extends Plugin {
 
   private syncTimeoutId?: number;
   private settingsTab?: ThingsToolkitSettingsTab;
+  private selectedReviewDate = "";
   private statusBarEl?: HTMLElement;
 
   async onload(): Promise<void> {
@@ -74,6 +77,7 @@ export default class ThingsToolkitPlugin extends Plugin {
     this.tryToSyncLogbook = this.tryToSyncLogbook.bind(this);
 
     await this.loadOptions();
+    this.selectedReviewDate = getMoment()().format("YYYY-MM-DD");
 
     this.registerView(
       VIEW_TYPE_THINGS_TOOLKIT_REVIEW,
@@ -110,6 +114,16 @@ export default class ThingsToolkitPlugin extends Plugin {
 
     this.updateStatusBar();
 
+    this.registerEvent(
+      this.app.workspace.on("file-open", (file: TFile | null) => {
+        this.selectReviewDateFromFile(file);
+      })
+    );
+
+    this.app.workspace.onLayoutReady(() => {
+      this.selectReviewDateFromFile(this.app.workspace.getActiveFile());
+    });
+
     if (this.isSyncSupported()) {
       this.app.workspace.onLayoutReady(() => {
         void this.refreshRecentDailyStats().then(() => {
@@ -135,6 +149,41 @@ export default class ThingsToolkitPlugin extends Plugin {
 
   isSyncSupported(): boolean {
     return Platform.isDesktopApp && isMacOS();
+  }
+
+  getSelectedReviewDate(): string {
+    return this.selectedReviewDate;
+  }
+
+  async selectReviewDate(
+    dateKey: string,
+    options: { openDailyNote?: boolean } = {}
+  ): Promise<void> {
+    this.selectedReviewDate = dateKey;
+    this.refreshReviewViews();
+
+    if (options.openDailyNote) {
+      await this.openDailyNote(dateKey);
+    }
+  }
+
+  private selectReviewDateFromFile(file: TFile | null): void {
+    const dateKey = this.getDailyNoteDateKey(file);
+
+    if (!dateKey || dateKey === this.selectedReviewDate) {
+      return;
+    }
+
+    this.selectedReviewDate = dateKey;
+    this.refreshReviewViews();
+  }
+
+  private getDailyNoteDateKey(file: TFile | null): string | null {
+    if (!file) {
+      return null;
+    }
+
+    return getDateFromFile(file, "day")?.format("YYYY-MM-DD") ?? null;
   }
 
   async activateReviewView(): Promise<void> {
@@ -459,7 +508,21 @@ export default class ThingsToolkitPlugin extends Plugin {
       throw new Error("Daily note could not be opened as a file");
     }
 
-    await this.app.workspace.getLeaf("tab").openFile(dailyNote);
+    const leaf = this.getDailyNoteOpenLeaf();
+    await leaf.openFile(dailyNote, { active: true });
+    await this.app.workspace.revealLeaf(leaf);
+  }
+
+  private getDailyNoteOpenLeaf(): WorkspaceLeaf {
+    const rootLeaf = this.app.workspace.getMostRecentLeaf(
+      this.app.workspace.rootSplit
+    );
+
+    if (rootLeaf?.view instanceof MarkdownView) {
+      return rootLeaf;
+    }
+
+    return this.app.workspace.getLeaf("tab");
   }
 
   refreshReviewViews(): void {
