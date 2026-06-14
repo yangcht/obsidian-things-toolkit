@@ -36,7 +36,9 @@ export class ThingsToolkitReviewView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    await this.plugin.refreshRecentDailyStats();
+    if (this.plugin.isSyncSupported()) {
+      await this.plugin.refreshRecentDailyStats();
+    }
     this.display();
   }
 
@@ -259,7 +261,6 @@ export class ThingsToolkitReviewView extends ItemView {
     buttonEl.addEventListener("click", () => {
       this.selectedDate = dateKey;
       this.display();
-      void this.plugin.openDailyNote(dateKey);
     });
   }
 

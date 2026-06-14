@@ -1,8 +1,3 @@
-import * as os from "os";
-import * as fs from "fs";
-import * as path from "path";
-import { spawn } from "child_process";
-
 import { getMoment, type MomentLike } from "./moment";
 
 import { THINGS_DB_PATH_START, THINGS_DB_PATH_END } from "./constants";
@@ -85,10 +80,6 @@ interface IThingsAppleScriptRecord {
   project?: { name?: string };
 }
 
-// Info on how to find the Things db file here:
-// https://culturedcode.com/things/support/articles/2982272/
-const baseDir = THINGS_DB_PATH_START.replace("~", os.homedir());
-
 const STATUS_CANCELLED = 2;
 
 class ThingsSqlitePrivacyError extends Error {
@@ -98,7 +89,15 @@ class ThingsSqlitePrivacyError extends Error {
   }
 }
 
-function getThingsSqlitePath(): string {
+async function getThingsSqlitePath(): Promise<string> {
+  const [os, fs, path] = await Promise.all([
+    import("os"),
+    import("fs"),
+    import("path"),
+  ]);
+  // Info on how to find the Things db file here:
+  // https://culturedcode.com/things/support/articles/2982272/
+  const baseDir = THINGS_DB_PATH_START.replace("~", os.homedir());
   let dataFiles: string[];
   try {
     dataFiles = fs.readdirSync(baseDir);
@@ -170,7 +169,9 @@ function getLastStopDate<T extends { stopDate: number }>(
   return recordsWithStopDate[recordsWithStopDate.length - 1]?.stopDate ?? null;
 }
 
-function runAppleScript(script: string): Promise<string> {
+async function runAppleScript(script: string): Promise<string> {
+  const { spawn } = await import("child_process");
+
   return new Promise((resolve, reject) => {
     const stdOut: Buffer[] = [];
     const stdErr: Buffer[] = [];
@@ -396,7 +397,7 @@ async function getTasksFromThingsDb(
   latestSyncTime: number
 ): Promise<ITaskRecord[]> {
   return querySqliteDB<ITaskRecord>(
-    getThingsSqlitePath(),
+    await getThingsSqlitePath(),
     `SELECT
         TMTask.uuid as uuid,
         TMTask.title as title,
@@ -432,7 +433,7 @@ async function getChecklistItemsThingsDb(
   latestSyncTime: number
 ): Promise<IChecklistItemRecord[]> {
   return querySqliteDB<IChecklistItemRecord>(
-    getThingsSqlitePath(),
+    await getThingsSqlitePath(),
     `SELECT
         task as taskId,
         title as title,

@@ -1,5 +1,3 @@
-import { spawn } from "child_process";
-
 import { App, PluginSettingTab, Setting, moment } from "obsidian";
 
 import type ThingsToolkitPlugin from "./index";
@@ -82,14 +80,17 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
   display(): void {
     this.containerEl.empty();
 
-    this.addResetLastSyncSetting();
-
     new Setting(this.containerEl).setName("Sync Engine").setHeading();
-    this.addThingsAccessModeSetting();
-    this.addThingsAccessStatusSetting();
-    this.addSyncEnabledSetting();
-    this.addSyncIntervalSetting();
-    this.addAppleScriptFallbackLookbackSetting();
+    if (this.plugin.isSyncSupported()) {
+      this.addResetLastSyncSetting();
+      this.addThingsAccessModeSetting();
+      this.addThingsAccessStatusSetting();
+      this.addSyncEnabledSetting();
+      this.addSyncIntervalSetting();
+      this.addAppleScriptFallbackLookbackSetting();
+    } else {
+      this.addUnsupportedSyncSetting();
+    }
 
     new Setting(this.containerEl).setName("Daily Notes").setHeading();
     this.addSectionHeadingSetting();
@@ -166,6 +167,14 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       });
   }
 
+  addUnsupportedSyncSetting(): void {
+    new Setting(this.containerEl)
+      .setName("Sync unavailable")
+      .setDesc(
+        "Things sync runs only in Obsidian for macOS. The plugin can stay enabled here so Obsidian Sync does not disable it on your Mac."
+      );
+  }
+
   addThingsAccessModeSetting(): void {
     new Setting(this.containerEl)
       .setName("Things access")
@@ -198,7 +207,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       .addButton((button) => {
         button.setButtonText("Full Disk Access");
         button.onClick(() => {
-          this.openSystemSettings(
+          void this.openSystemSettings(
             "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
           );
         });
@@ -206,14 +215,15 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       .addButton((button) => {
         button.setButtonText("Automation");
         button.onClick(() => {
-          this.openSystemSettings(
+          void this.openSystemSettings(
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
           );
         });
       });
   }
 
-  openSystemSettings(url: string): void {
+  async openSystemSettings(url: string): Promise<void> {
+    const { spawn } = await import("child_process");
     spawn("open", [url]);
   }
 
@@ -349,7 +359,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
           button.setDisabled(syncStatus.isSyncing);
           button.onClick(async () => {
             button.setDisabled(true);
-            await this.plugin.syncLogbook();
+            await this.plugin.tryToSyncLogbook();
             this.display();
           });
         })

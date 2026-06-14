@@ -1,4 +1,3 @@
-import { spawn } from "child_process";
 import Papa from "papaparse";
 
 export const TASK_FETCH_LIMIT = 1000;
@@ -22,6 +21,8 @@ async function handleSqliteQuery(
   dbPath: string,
   query: string
 ): Promise<ISpawnResults> {
+  const { spawn } = await import("child_process");
+
   return new Promise((done) => {
     const stdOut: Buffer[] = [];
     const stdErr: Buffer[] = [];

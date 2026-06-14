@@ -10,7 +10,6 @@ import {
   getAllDailyNotes,
   getDailyNote,
 } from "obsidian-daily-notes-interface";
-import type { Moment } from "moment";
 
 import { getMoment, type MomentLike } from "./moment";
 import { ConfirmationModal } from "./modal";
@@ -38,8 +37,14 @@ import {
   updateSection,
 } from "./textUtils";
 
+type DailyNoteDate = Parameters<typeof getDailyNote>[0];
+
 function isTFile(file: unknown): file is TFile {
   return file instanceof TFile;
+}
+
+function toDailyNoteDate(date: MomentLike): DailyNoteDate {
+  return date as unknown as DailyNoteDate;
 }
 
 function getDateKey(date: MomentLike): string {
@@ -63,17 +68,12 @@ export default class ThingsToolkitPlugin extends Plugin {
   private statusBarEl?: HTMLElement;
 
   async onload(): Promise<void> {
-    if (!Platform.isDesktopApp || !isMacOS()) {
-      console.info(
-        "Failed to load Things Toolkit plugin. Platform not supported"
-      );
-      return;
-    }
-
     this.scheduleNextSync = this.scheduleNextSync.bind(this);
     this.syncLogbook = this.syncLogbook.bind(this);
     this.tryToScheduleSync = this.tryToScheduleSync.bind(this);
     this.tryToSyncLogbook = this.tryToSyncLogbook.bind(this);
+
+    await this.loadOptions();
 
     this.registerView(
       VIEW_TYPE_THINGS_TOOLKIT_REVIEW,
@@ -102,8 +102,6 @@ export default class ThingsToolkitPlugin extends Plugin {
       void this.activateReviewView();
     });
 
-    await this.loadOptions();
-
     this.statusBarEl = this.addStatusBarItem();
     this.statusBarEl.addClass("things-toolkit-status");
     this.statusBarEl.addEventListener("click", () => {
@@ -112,21 +110,31 @@ export default class ThingsToolkitPlugin extends Plugin {
 
     this.updateStatusBar();
 
-    this.app.workspace.onLayoutReady(() => {
-      void this.refreshRecentDailyStats().then(() => {
-        this.updateStatusBar();
-        this.refreshReviewViews();
+    if (this.isSyncSupported()) {
+      this.app.workspace.onLayoutReady(() => {
+        void this.refreshRecentDailyStats().then(() => {
+          this.updateStatusBar();
+          this.refreshReviewViews();
+        });
       });
-    });
+    }
 
     this.settingsTab = new ThingsToolkitSettingsTab(this.app, this);
     this.addSettingTab(this.settingsTab);
 
-    if (this.options.hasAcceptedDisclaimer && this.options.isSyncEnabled) {
+    if (
+      this.isSyncSupported() &&
+      this.options.hasAcceptedDisclaimer &&
+      this.options.isSyncEnabled
+    ) {
       this.app.workspace.onLayoutReady(() => {
         this.scheduleNextSync();
       });
     }
+  }
+
+  isSyncSupported(): boolean {
+    return Platform.isDesktopApp && isMacOS();
   }
 
   async activateReviewView(): Promise<void> {
@@ -151,6 +159,11 @@ export default class ThingsToolkitPlugin extends Plugin {
   }
 
   async tryToSyncLogbook(): Promise<void> {
+    if (!this.isSyncSupported()) {
+      new Notice("Things Toolkit sync is only available on macOS desktop.");
+      return;
+    }
+
     if (this.options.hasAcceptedDisclaimer) {
       await this.syncLogbook();
       return;
@@ -169,6 +182,11 @@ export default class ThingsToolkitPlugin extends Plugin {
   }
 
   tryToScheduleSync(): void {
+    if (!this.isSyncSupported()) {
+      this.cancelScheduledSync();
+      return;
+    }
+
     if (this.options.hasAcceptedDisclaimer) {
       this.scheduleNextSync();
       return;
@@ -193,6 +211,11 @@ export default class ThingsToolkitPlugin extends Plugin {
 
   async syncLogbook(): Promise<void> {
     const moment = getMoment();
+
+    if (!this.isSyncSupported()) {
+      new Notice("Things Toolkit sync is only available on macOS desktop.");
+      return;
+    }
 
     if (this.syncStatus.isSyncing) {
       new Notice("Things Toolkit sync already running");
@@ -242,10 +265,10 @@ export default class ThingsToolkitPlugin extends Plugin {
 
       for (const [dateStr, groupedTasks] of dayEntries) {
         const date = moment(dateStr);
-        let dailyNote = getDailyNote(date as unknown as Moment, dailyNotes);
+        let dailyNote = getDailyNote(toDailyNoteDate(date), dailyNotes);
 
         if (!dailyNote) {
-          dailyNote = await createDailyNote(date as unknown as Moment);
+          dailyNote = await createDailyNote(toDailyNoteDate(date));
         }
 
         if (!isTFile(dailyNote)) {
@@ -357,7 +380,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       date.add(1, "day")
     ) {
       const dateKey = getDateKey(date);
-      const dailyNote = getDailyNote(date as unknown as Moment, dailyNotes);
+      const dailyNote = getDailyNote(toDailyNoteDate(date), dailyNotes);
 
       if (!isTFile(dailyNote)) {
         dailyStats[dateKey] = {
@@ -426,17 +449,17 @@ export default class ThingsToolkitPlugin extends Plugin {
     const moment = getMoment();
     const date = moment(dateKey, "YYYY-MM-DD");
     const dailyNotes = getAllDailyNotes();
-    let dailyNote = getDailyNote(date as unknown as Moment, dailyNotes);
+    let dailyNote = getDailyNote(toDailyNoteDate(date), dailyNotes);
 
     if (!dailyNote) {
-      dailyNote = await createDailyNote(date as unknown as Moment);
+      dailyNote = await createDailyNote(toDailyNoteDate(date));
     }
 
     if (!isTFile(dailyNote)) {
       throw new Error("Daily note could not be opened as a file");
     }
 
-    await this.app.workspace.getLeaf(false).openFile(dailyNote);
+    await this.app.workspace.getLeaf("tab").openFile(dailyNote);
   }
 
   refreshReviewViews(): void {
@@ -481,7 +504,11 @@ export default class ThingsToolkitPlugin extends Plugin {
 
     this.cancelScheduledSync();
 
-    if (!this.options.isSyncEnabled || !this.options.syncInterval) {
+    if (
+      !this.isSyncSupported() ||
+      !this.options.isSyncEnabled ||
+      !this.options.syncInterval
+    ) {
       console.debug("[Things Toolkit] scheduling skipped, no syncInterval set");
       return;
     }

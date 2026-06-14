@@ -11,7 +11,7 @@ Things Toolkit connects Things3 with Obsidian daily notes. It imports completed 
 - Review a full year by default, grouped by month with ISO week numbers.
 - See monthly totals, active-day counts, best day, and selected-day week/month context.
 - Mark days as good, steady, or needing improvement, and save a short reflection.
-- Open or create the daily note by clicking a calendar day.
+- Open or create the selected daily note from the review detail button.
 
 ## macOS Privacy
 
