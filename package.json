@@ -1,6 +1,6 @@
 {
   "name": "obsidian-things-toolkit-plugin",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "type": "module",
   "description": "Sync Things3 completions into Obsidian daily notes with review stats",
   "author": "yangcht",
