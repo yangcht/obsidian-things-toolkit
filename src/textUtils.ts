@@ -1,3 +1,4 @@
+import { Platform } from "obsidian";
 import type { App, TFile } from "obsidian";
 
 import { getEditorForFile } from "./fileUtils";
@@ -37,7 +38,7 @@ export function groupBy<T>(
 }
 
 export function isMacOS(): boolean {
-  return /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+  return Platform.isMacOS;
 }
 
 export async function updateSection(
