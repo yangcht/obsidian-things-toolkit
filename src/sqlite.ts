@@ -1,4 +1,4 @@
-import Papa from "papaparse";
+import { parse } from "papaparse";
 
 import { getChildProcessModule } from "./nodeUtils";
 
@@ -16,11 +16,13 @@ function chunkToString(chunk: unknown): string {
 
 function parseCSV<T>(csv: string[]): T[] {
   const lines = csv.join("");
-  return Papa.parse<T>(lines, {
+  const result = parse<T>(lines, {
     dynamicTyping: false,
     header: true,
     skipEmptyLines: true,
-  }).data;
+  });
+
+  return result.data;
 }
 
 async function handleSqliteQuery(
@@ -31,6 +33,7 @@ async function handleSqliteQuery(
     const stdOut: string[] = [];
     const stdErr: string[] = [];
     let settled = false;
+
     const finish = (result: ISpawnResults) => {
       if (!settled) {
         settled = true;
@@ -48,6 +51,7 @@ async function handleSqliteQuery(
     spawned.stdout.on("data", (chunk: unknown) => {
       stdOut.push(chunkToString(chunk));
     });
+
     spawned.stderr.on("data", (chunk: unknown) => {
       stdErr.push(chunkToString(chunk));
     });
@@ -55,8 +59,14 @@ async function handleSqliteQuery(
     spawned.on("error", (err: Error) => {
       stdErr.push(err.stack ?? err.message);
     });
-    spawned.on("close", (code: number | null) => finish({ stdErr, stdOut, code }));
-    spawned.on("exit", (code: number | null) => finish({ stdErr, stdOut, code }));
+
+    spawned.on("close", (code: number | null) =>
+      finish({ stdErr, stdOut, code })
+    );
+
+    spawned.on("exit", (code: number | null) =>
+      finish({ stdErr, stdOut, code })
+    );
   });
 }
 
@@ -65,9 +75,11 @@ export async function querySqliteDB<T>(
   query: string
 ): Promise<T[]> {
   const { stdOut, stdErr, code } = await handleSqliteQuery(dbPath, query);
+
   if (stdErr.length || code !== 0) {
     const error = stdErr.join("") || `sqlite3 exited with code ${String(code)}`;
     throw new Error(error);
   }
+
   return parseCSV<T>(stdOut);
 }

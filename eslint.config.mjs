@@ -8,7 +8,8 @@ export default tseslint.config(
       "main.js",
       "rollup.config.js",
       "node_modules/**",
-      "dist/**"
+      "dist/**",
+      "test/**"
     ],
   },
 
@@ -20,12 +21,12 @@ export default tseslint.config(
     ],
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        project: "./tsconfig.json",
         tsconfigRootDir: import.meta.dirname,
       },
     },
     rules: {
-      "@typescript-eslint/no-explicit-any": "warn"
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   }
 );

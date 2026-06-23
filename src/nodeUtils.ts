@@ -1,14 +1,10 @@
-import { Platform } from "obsidian";
-
 interface DesktopWindow extends Window {
   require?: (moduleName: string) => unknown;
 }
 
 type ModuleRequire = (moduleName: string) => unknown;
 
-declare const require:
-  | ModuleRequire
-  | undefined;
+declare const require: ModuleRequire | undefined;
 
 export interface ChildProcessLike {
   on(event: "close" | "exit", listener: (code: number | null) => void): void;
@@ -43,21 +39,19 @@ interface StreamLike {
 }
 
 function requireDesktopModule<T>(moduleName: string): T {
-  if (!Platform.isDesktopApp) {
-    throw new Error(`${moduleName} is only available in Obsidian desktop`);
-  }
-
   const requireFns: ModuleRequire[] = [];
+
   if (typeof require === "function") {
     requireFns.push(require);
   }
+
   const windowRequire = (window as DesktopWindow).require;
   if (typeof windowRequire === "function") {
     requireFns.push(windowRequire.bind(window));
   }
 
   if (requireFns.length === 0) {
-    throw new Error("Obsidian desktop require API is unavailable");
+    throw new Error(`${moduleName} is only available in Obsidian desktop`);
   }
 
   let lastError: unknown;

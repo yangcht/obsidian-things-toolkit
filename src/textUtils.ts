@@ -1,5 +1,5 @@
 import type { App, TFile } from "obsidian";
-import { Platform } from "obsidian";
+
 import { getEditorForFile } from "./fileUtils";
 
 export function getHeadingLevel(line = ""): number | null {
@@ -7,7 +7,11 @@ export function getHeadingLevel(line = ""): number | null {
   return heading ? heading[1].length : null;
 }
 
-export function toHeading(title: string, level: number, addEmptyLine: boolean): string {
+export function toHeading(
+  title: string,
+  level: number,
+  addEmptyLine: boolean
+): string {
   const emptyLine = addEmptyLine ? "\n" : "";
   const hash = "".padStart(level, "#");
   return `${emptyLine}${hash} ${title}`;
@@ -33,7 +37,7 @@ export function groupBy<T>(
 }
 
 export function isMacOS(): boolean {
-  return Platform.isMacOS;
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 }
 
 export async function updateSection(
@@ -76,6 +80,7 @@ export async function updateSection(
         )
         .join("\n")
         .trimEnd();
+
       if (currentSection === sectionContents.trimEnd()) {
         return false;
       }
@@ -85,6 +90,7 @@ export async function updateSection(
         nextSectionLineNum !== -1
           ? { line: nextSectionLineNum, ch: 0 }
           : { line: fileLines.length, ch: 0 };
+
       editor.replaceRange(`${sectionContents}\n`, from, to);
       return true;
     }
@@ -110,7 +116,9 @@ export async function updateSection(
       return false;
     }
 
-    await vault.process(file, () => [...prefix, sectionContents, ...suffix].join("\n"));
+    await vault.process(file, () =>
+      [...prefix, sectionContents, ...suffix].join("\n")
+    );
     return true;
   }
 
