@@ -50,7 +50,7 @@ export interface ISettings {
   canceledMark: string;
 }
 
-export const DEFAULT_SETTINGS = Object.freeze({
+export const DEFAULT_SETTINGS: Readonly<ISettings> = Object.freeze({
   hasAcceptedDisclaimer: false,
   latestSyncTime: 0,
   appleScriptFallbackLookbackDays: DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS,
@@ -67,22 +67,22 @@ export const DEFAULT_SETTINGS = Object.freeze({
   syncInterval: DEFAULT_SYNC_FREQUENCY_SECONDS,
   sectionHeading: DEFAULT_SECTION_HEADING,
   tagPrefix: DEFAULT_TAG_PREFIX,
-  canceledMark: DEFAULT_CANCELLED_MARK
+  canceledMark: DEFAULT_CANCELLED_MARK,
 });
 
 export class ThingsToolkitSettingsTab extends PluginSettingTab {
-  private plugin: ThingsToolkitPlugin;
+  private readonly toolkitPlugin: ThingsToolkitPlugin;
 
   constructor(app: App, plugin: ThingsToolkitPlugin) {
     super(app, plugin);
-    this.plugin = plugin;
+    this.toolkitPlugin = plugin;
   }
 
   display(): void {
     this.containerEl.empty();
 
     new Setting(this.containerEl).setName("Sync Engine").setHeading();
-    if (this.plugin.isSyncSupported()) {
+    if (this.toolkitPlugin.isSyncSupported()) {
       this.addResetLastSyncSetting();
       this.addThingsAccessModeSetting();
       this.addThingsAccessStatusSetting();
@@ -114,10 +114,10 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         "Markdown heading to replace or append when adding Things items to a daily note"
       )
       .addText((textfield) => {
-        textfield.setValue(this.plugin.options.sectionHeading);
+        textfield.setValue(this.toolkitPlugin.options.sectionHeading);
         textfield.onChange((rawSectionHeading) => {
           const sectionHeading = this.normalizeSectionHeading(rawSectionHeading);
-          void this.plugin.writeOptions({ sectionHeading });
+          void this.toolkitPlugin.writeOptions({ sectionHeading });
         });
       });
   }
@@ -125,35 +125,38 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
   addReviewWindowDaysSetting(): void {
     new Setting(this.containerEl)
       .setName("Review window")
-      .setDesc(
-        "Number of recent days to show and repair in the review calendar"
-      )
+      .setDesc("Number of recent days to show and repair in the review calendar")
       .addText((textfield) => {
-        textfield.setValue(String(this.plugin.options.reviewWindowDays));
+        textfield.setValue(String(this.toolkitPlugin.options.reviewWindowDays));
         textfield.inputEl.type = "number";
-        textfield.inputEl.onblur = (e: FocusEvent) => {
-          const target = e.target;
+        textfield.inputEl.onblur = (event: FocusEvent) => {
+          const target = event.target;
           if (!(target instanceof HTMLInputElement)) {
             return;
           }
+
           const reviewWindowDays = Math.max(
             30,
             Math.floor(Number(target.value) || DEFAULT_REVIEW_WINDOW_DAYS)
           );
+
           textfield.setValue(String(reviewWindowDays));
-          void this.plugin.writeOptions({ reviewWindowDays });
+          void this.toolkitPlugin.writeOptions({ reviewWindowDays });
         };
       });
   }
 
   normalizeSectionHeading(rawSectionHeading: string): string {
     const sectionHeading = rawSectionHeading.trim();
+
     if (!sectionHeading) {
       return DEFAULT_SECTION_HEADING;
     }
+
     if (/^#{1,6}\s+\S/.test(sectionHeading)) {
       return sectionHeading;
     }
+
     return `## ${sectionHeading.replace(/^#+\s*/, "")}`;
   }
 
@@ -161,9 +164,9 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
     new Setting(this.containerEl)
       .setName("Enable periodic syncing")
       .addToggle((toggle) => {
-        toggle.setValue(this.plugin.options.isSyncEnabled);
+        toggle.setValue(this.toolkitPlugin.options.isSyncEnabled);
         toggle.onChange((isSyncEnabled) => {
-          void this.plugin.writeOptions({ isSyncEnabled });
+          void this.toolkitPlugin.writeOptions({ isSyncEnabled });
         });
       });
   }
@@ -187,19 +190,22 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
           .addOption("auto", "Auto")
           .addOption("applescript", "AppleScript")
           .addOption("sqlite", "SQLite only");
-        dropdown.setValue(this.plugin.options.thingsAccessMode);
+
+        dropdown.setValue(this.toolkitPlugin.options.thingsAccessMode);
         dropdown.onChange(async (value: string) => {
           const thingsAccessMode = value as ThingsAccessMode;
-          await this.plugin.writeOptions({ thingsAccessMode });
+          await this.toolkitPlugin.writeOptions({ thingsAccessMode });
           this.display();
         });
       });
   }
 
   addThingsAccessStatusSetting(): void {
-    const accessStatus = this.plugin.options.thingsAccessStatus;
+    const accessStatus = this.toolkitPlugin.options.thingsAccessStatus;
     const statusText = accessStatus
-      ? `${accessStatus.message} Checked ${moment.unix(accessStatus.updatedAt).fromNow()}.`
+      ? `${accessStatus.message} Checked ${moment
+          .unix(accessStatus.updatedAt)
+          .fromNow()}.`
       : "Not checked yet. Run Sync now to test Things access.";
 
     new Setting(this.containerEl)
@@ -208,7 +214,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       .addButton((button) => {
         button.setButtonText("Full Disk Access");
         button.onClick(() => {
-          void this.openSystemSettings(
+          this.openSystemSettings(
             "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
           );
         });
@@ -216,7 +222,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       .addButton((button) => {
         button.setButtonText("Automation");
         button.onClick(() => {
-          void this.openSystemSettings(
+          this.openSystemSettings(
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
           );
         });
@@ -230,25 +236,27 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
   addDoesSyncNoteBodySetting(): void {
     new Setting(this.containerEl)
       .setName("Include notes")
-      .setDesc('Includes MD notes of a task into the synced Obsidian document')
+      .setDesc("Includes MD notes of a task into the synced Obsidian document")
       .addToggle((toggle) => {
-        toggle.setValue(this.plugin.options.doesSyncNoteBody);
+        toggle.setValue(this.toolkitPlugin.options.doesSyncNoteBody);
         toggle.onChange((doesSyncNoteBody) => {
-          void this.plugin.writeOptions({ doesSyncNoteBody });
+          void this.toolkitPlugin.writeOptions({ doesSyncNoteBody });
         });
       });
   }
 
   addDoesSyncProjectSetting(): void {
     new Setting(this.containerEl)
-        .setName("Include project")
-        .setDesc("If the Things task belongs to a project, use project name as header instead of area")
-        .addToggle((toggle) => {
-          toggle.setValue(this.plugin.options.doesSyncProject);
-          toggle.onChange((doesSyncProject) => {
-            void this.plugin.writeOptions({ doesSyncProject });
-          });
+      .setName("Include project")
+      .setDesc(
+        "If the Things task belongs to a project, use project name as header instead of area"
+      )
+      .addToggle((toggle) => {
+        toggle.setValue(this.toolkitPlugin.options.doesSyncProject);
+        toggle.onChange((doesSyncProject) => {
+          void this.toolkitPlugin.writeOptions({ doesSyncProject });
         });
+      });
   }
 
   addSyncIntervalSetting(): void {
@@ -256,19 +264,21 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       .setName("Sync frequency")
       .setDesc("Number of seconds the plugin will wait before syncing again")
       .addText((textfield) => {
-        textfield.setValue(String(this.plugin.options.syncInterval));
+        textfield.setValue(String(this.toolkitPlugin.options.syncInterval));
         textfield.inputEl.type = "number";
-        textfield.inputEl.onblur = (e: FocusEvent) => {
-          const target = e.target;
+        textfield.inputEl.onblur = (event: FocusEvent) => {
+          const target = event.target;
           if (!(target instanceof HTMLInputElement)) {
             return;
           }
+
           const syncInterval = Math.max(
             60,
             Math.floor(Number(target.value) || DEFAULT_SYNC_FREQUENCY_SECONDS)
           );
+
           textfield.setValue(String(syncInterval));
-          void this.plugin.writeOptions({ syncInterval });
+          void this.toolkitPlugin.writeOptions({ syncInterval });
         };
       });
   }
@@ -280,19 +290,27 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         `Days to repair when macOS blocks direct Things database access. The recent review window always uses at least ${MIN_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS} days.`
       )
       .addText((textfield) => {
-        textfield.setValue(String(this.plugin.options.appleScriptFallbackLookbackDays));
+        textfield.setValue(
+          String(this.toolkitPlugin.options.appleScriptFallbackLookbackDays)
+        );
         textfield.inputEl.type = "number";
-        textfield.inputEl.onblur = (e: FocusEvent) => {
-          const target = e.target;
+        textfield.inputEl.onblur = (event: FocusEvent) => {
+          const target = event.target;
           if (!(target instanceof HTMLInputElement)) {
             return;
           }
+
           const appleScriptFallbackLookbackDays = Math.max(
             1,
-            Math.floor(Number(target.value) || DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS)
+            Math.floor(
+              Number(target.value) || DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS
+            )
           );
+
           textfield.setValue(String(appleScriptFallbackLookbackDays));
-          void this.plugin.writeOptions({ appleScriptFallbackLookbackDays });
+          void this.toolkitPlugin.writeOptions({
+            appleScriptFallbackLookbackDays,
+          });
         };
       });
   }
@@ -304,77 +322,87 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         "Prefix added to Things tags when imported into Obsidian (e.g. #things/work)"
       )
       .addText((textfield) => {
-        textfield.setValue(this.plugin.options.tagPrefix);
+        textfield.setValue(this.toolkitPlugin.options.tagPrefix);
         textfield.onChange((tagPrefix) => {
-          void this.plugin.writeOptions({ tagPrefix });
+          void this.toolkitPlugin.writeOptions({ tagPrefix });
         });
       });
   }
 
   addCanceledMarkSetting(): void {
     new Setting(this.containerEl)
-        .setName("Canceled mark")
-        .setDesc(
-            "Mark character to use for canceled tasks"
-        )
-        .addText((textfield) => {
-          textfield.setValue(this.plugin.options.canceledMark);
-          textfield.onChange((canceledMark) => {
-            void this.plugin.writeOptions({ canceledMark });
-          });
+      .setName("Canceled mark")
+      .setDesc("Mark character to use for canceled tasks")
+      .addText((textfield) => {
+        textfield.setValue(this.toolkitPlugin.options.canceledMark);
+        textfield.onChange((canceledMark) => {
+          void this.toolkitPlugin.writeOptions({ canceledMark });
         });
+      });
   }
 
   addDoesAddNewlineBeforeHeadingsSetting(): void {
     new Setting(this.containerEl)
-        .setName("Empty line before headings")
-        .setDesc("When grouping tasks with headings by area or project, add an empty line before that heading")
-        .addToggle((toggle) => {
-          toggle.setValue(this.plugin.options.doesAddNewlineBeforeHeadings);
-          toggle.onChange((doesAddNewlineBeforeHeadings) => {
-            void this.plugin.writeOptions({ doesAddNewlineBeforeHeadings });
+      .setName("Empty line before headings")
+      .setDesc(
+        "When grouping tasks with headings by area or project, add an empty line before that heading"
+      )
+      .addToggle((toggle) => {
+        toggle.setValue(
+          this.toolkitPlugin.options.doesAddNewlineBeforeHeadings
+        );
+        toggle.onChange((doesAddNewlineBeforeHeadings) => {
+          void this.toolkitPlugin.writeOptions({
+            doesAddNewlineBeforeHeadings,
           });
         });
+      });
   }
 
   addResetLastSyncSetting(): void {
-    const { latestSyncTime } = this.plugin.options;
-    const { syncStatus } = this.plugin;
-    const syncTime = latestSyncTime > 0 
-      ? moment.unix(this.plugin.options.latestSyncTime).fromNow()
-      : 'Never';
+    const { latestSyncTime } = this.toolkitPlugin.options;
+    const { syncStatus } = this.toolkitPlugin;
+    const syncTime =
+      latestSyncTime > 0
+        ? moment.unix(this.toolkitPlugin.options.latestSyncTime).fromNow()
+        : "Never";
 
     new Setting(this.containerEl)
-        .setDesc(createFragment(el => {
-          el.appendText('Last sync: ');
-          el.createSpan({ cls: 'u-pop', text: syncTime });
+      .setDesc(
+        createFragment((el) => {
+          el.appendText("Last sync: ");
+          el.createSpan({ cls: "u-pop", text: syncTime });
+
           if (syncStatus.message) {
             el.createEl("br");
             el.appendText(syncStatus.message);
           }
-        }))
-        .addButton(button => {
-          button.setButtonText(syncStatus.isSyncing ? 'Syncing...' : 'Sync now');
-          button.setClass('mod-cta');
-          button.setDisabled(syncStatus.isSyncing);
-          button.onClick(async () => {
-            button.setDisabled(true);
-            await this.plugin.tryToSyncLogbook();
-            this.display();
-          });
         })
-        .addButton(button => {
-          button.setButtonText('Reset sync history');
-          button.setClass('mod-danger');
-          button.setDisabled(syncStatus.isSyncing);
-          button.onClick(() => {
-            void this.plugin.writeOptions({ latestSyncTime: 0 });
-            this.display();
-          });
-        })
-        .addExtraButton(component => {
-          component.setIcon('lucide-info');
-          component.setTooltip('Resetting sync history will rewrite the configured Things section in matching daily notes.');
+      )
+      .addButton((button) => {
+        button.setButtonText(syncStatus.isSyncing ? "Syncing..." : "Sync now");
+        button.setClass("mod-cta");
+        button.setDisabled(syncStatus.isSyncing);
+        button.onClick(async () => {
+          button.setDisabled(true);
+          await this.toolkitPlugin.tryToSyncLogbook();
+          this.display();
         });
+      })
+      .addButton((button) => {
+        button.setButtonText("Reset sync history");
+        button.setClass("mod-danger");
+        button.setDisabled(syncStatus.isSyncing);
+        button.onClick(() => {
+          void this.toolkitPlugin.writeOptions({ latestSyncTime: 0 });
+          this.display();
+        });
+      })
+      .addExtraButton((component) => {
+        component.setIcon("lucide-info");
+        component.setTooltip(
+          "Resetting sync history will rewrite the configured Things section in matching daily notes."
+        );
+      });
   }
 }

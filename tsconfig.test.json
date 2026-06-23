@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "@obsidian-typings/obsidian-public-latest"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

@@ -1,25 +1,25 @@
-import { App, Editor, MarkdownView, TFile, WorkspaceLeaf } from "obsidian";
-
-type MarkdownEditor = Editor & {
-  replaceRange: Editor["replaceRange"];
-};
+import { MarkdownView } from "obsidian";
+import type { App, Editor, TFile } from "obsidian";
 
 type MarkdownViewWithEditor = MarkdownView & {
-  editor?: MarkdownEditor;
-  sourceMode?: { cmEditor?: MarkdownEditor };
+  editor?: Editor;
+  sourceMode?: { cmEditor?: Editor };
 };
 
 function isMarkdownViewWithEditor(view: unknown): view is MarkdownViewWithEditor {
   return view instanceof MarkdownView;
 }
 
-export function getEditorForFile(app: App, file: TFile): MarkdownEditor | null {
-  let editor: MarkdownEditor | null = null;
-  app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+export function getEditorForFile(app: App, file: TFile): Editor | null {
+  let editor: Editor | null = null;
+
+  app.workspace.iterateAllLeaves((leaf) => {
     const { view } = leaf;
+
     if (isMarkdownViewWithEditor(view) && view.file === file) {
       editor = view.editor ?? view.sourceMode?.cmEditor ?? null;
     }
   });
+
   return editor;
 }
