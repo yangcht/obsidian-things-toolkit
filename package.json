@@ -1,6 +1,6 @@
 {
   "name": "obsidian-things-toolkit-plugin",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "type": "module",
   "description": "Sync Things3 completions into Obsidian daily notes with review stats",
   "author": "yangcht",
@@ -8,14 +8,17 @@
   "license": "MIT",
   "scripts": {
     "lint": "eslint src/**/*.ts",
+    "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "build": "npm run lint && npm run typecheck && rollup -c",
+    "build": "npm run lint && npm test && npm run typecheck && rollup -c",
     "build:nolint": "rollup -c",
     "release:create": "npm run build && VERSION=$(node -p \"require('./manifest.json').version\") && gh release create \"$VERSION\" main.js manifest.json styles.css --title \"$VERSION\" --notes \"Release $VERSION\"",
     "release:upload": "npm run build && VERSION=$(node -p \"require('./manifest.json').version\") && (gh release delete-asset \"$VERSION\" versions.json -y >/dev/null 2>&1 || true) && gh release upload \"$VERSION\" main.js manifest.json styles.css --clobber",
     "test:watch": "yarn test -- --watch"
   },
   "dependencies": {
+    "@types/papaparse": "5.3.1",
+    "obsidian": "1.13.1",
     "obsidian-daily-notes-interface": "0.9.2",
     "papaparse": "5.3.1",
     "tslib": "2.2.0"
@@ -26,12 +29,11 @@
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/node": "latest",
-    "@types/papaparse": "5.3.1",
     "@typescript-eslint/eslint-plugin": "latest",
     "@typescript-eslint/parser": "latest",
     "eslint": "latest",
-    "obsidian": "latest",
     "rollup": "^4.62.0",
+    "tsx": "4.22.4",
     "typescript": "latest",
     "typescript-eslint": "^8.61.0"
   }

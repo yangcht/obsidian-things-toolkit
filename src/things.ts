@@ -199,8 +199,8 @@ function runAppleScript(script: string): Promise<string> {
       }
     };
 
-    const { spawn } = getChildProcessModule();
-    const spawned = spawn("osascript", ["-e", script]);
+    const childProcess = getChildProcessModule();
+    const spawned = childProcess.spawn("osascript", ["-e", script]);
     spawned.stdout.on("data", (chunk: unknown) => stdOut.push(chunkToString(chunk)));
     spawned.stderr.on("data", (chunk: unknown) => stdErr.push(chunkToString(chunk)));
     spawned.on("error", finish);

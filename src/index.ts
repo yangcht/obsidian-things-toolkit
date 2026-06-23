@@ -16,6 +16,7 @@ import {
 import { getMoment, type MomentLike } from "./moment";
 import { ConfirmationModal } from "./modal";
 import { ToolkitRenderer } from "./renderer";
+import { getNextSyncDelayMs } from "./scheduler";
 import {
   ThingsToolkitReviewView,
   VIEW_TYPE_THINGS_TOOLKIT_REVIEW,
@@ -66,6 +67,7 @@ export default class ThingsToolkitPlugin extends Plugin {
   };
 
   private syncTimeoutId?: number;
+  private lastSyncAttemptTime = 0;
   private settingsTab?: ThingsToolkitSettingsTab;
   private selectedReviewDate = "";
   private statusBarEl?: HTMLElement;
@@ -271,6 +273,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       return;
     }
 
+    this.lastSyncAttemptTime = moment().unix();
     this.syncStatus = {
       isSyncing: true,
       message: "Syncing...",
@@ -577,8 +580,12 @@ export default class ThingsToolkitPlugin extends Plugin {
     }
 
     const { latestSyncTime, syncInterval } = this.options;
-    const secondsUntilNextSync = latestSyncTime + syncInterval - now;
-    const nextSync = Math.max(secondsUntilNextSync * 1000, 20);
+    const nextSync = getNextSyncDelayMs(
+      latestSyncTime,
+      this.lastSyncAttemptTime,
+      syncInterval,
+      now
+    );
 
     console.debug(`[Things Toolkit] next sync scheduled in ${nextSync}ms`);
 

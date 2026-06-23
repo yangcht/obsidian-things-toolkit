@@ -22,6 +22,8 @@ Things Toolkit uses two access paths:
 
 In Auto mode, the plugin tries SQLite first and falls back to AppleScript if macOS privacy blocks the database. The settings tab shows the current access status and includes shortcuts to Full Disk Access and Automation privacy settings.
 
+Failed periodic syncs wait for the configured sync interval before retrying. Repair syncs are idempotent: unchanged Things sections are left untouched.
+
 ## Settings
 
 | Setting | Purpose |
@@ -34,7 +36,25 @@ In Auto mode, the plugin tries SQLite first and falls back to AppleScript if mac
 | Section heading | Markdown heading where synced Things items are written. |
 | Tag prefix | Prefix used for imported Things tags. |
 | Include notes | Include Things task notes below each task. |
-| Include project | Group by project when available. |
+| Include project | Group project tasks under project headings instead of area headings. |
+
+## Development
+
+Install dependencies and run the complete local verification pipeline:
+
+```sh
+npm install
+npm run build
+```
+
+The build runs type-aware linting, scheduler regression tests, TypeScript checking, and the Rollup bundle. Test plugin builds in a dedicated Obsidian vault before using them with personal notes.
+
+## 1.6.0
+
+- Fix external source audits that omit development-only type packages.
+- Prevent rapid retry loops after failed periodic sync attempts.
+- Correct project-heading precedence when project grouping is enabled.
+- Add type-aware linting and scheduler regression tests to the build.
 
 ## Publishing
 

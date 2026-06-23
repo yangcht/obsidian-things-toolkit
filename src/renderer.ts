@@ -1,6 +1,6 @@
-import { App } from "obsidian";
-import { ISettings } from "./settings";
-import { ISubTask, ITask } from "./things";
+import type { App } from "obsidian";
+import type { ISettings } from "./settings";
+import type { ISubTask, ITask } from "./things";
 import { getHeadingLevel, getTab, groupBy, toHeading } from "./textUtils";
 
 interface VaultConfigReader {
@@ -64,7 +64,7 @@ export class ToolkitRenderer {
     const { sectionHeading, doesSyncProject, doesAddNewlineBeforeHeadings } = this.settings;
     const headings = groupBy<ITask>(
       tasks,
-      (task) => task.area || (doesSyncProject ? task.project : "") || ""
+      (task) => (doesSyncProject ? task.project : undefined) || task.area || ""
     );
     const headingLevel = getHeadingLevel(sectionHeading) ?? 2;
 

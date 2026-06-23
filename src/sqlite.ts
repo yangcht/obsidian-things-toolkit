@@ -38,8 +38,8 @@ async function handleSqliteQuery(
       }
     };
 
-    const { spawn } = getChildProcessModule();
-    const spawned = spawn(
+    const childProcess = getChildProcessModule();
+    const spawned = childProcess.spawn(
       "sqlite3",
       ["-csv", "-header", "-readonly", dbPath, query],
       { detached: true }
