@@ -565,11 +565,6 @@ flatted@^3.2.9:
   resolved "https://registry.npmjs.org/flatted/-/flatted-3.4.2.tgz"
   integrity sha512-PjDse7RzhcPkIJwy5t7KPWQSZ9cAbzQXcafsetQoD7sOJRQlGikNbx7yZp2OotDnJyrDcbyRq3Ttb18iYOqkxA==
 
-fsevents@~2.3.2, fsevents@~2.3.3:
-  version "2.3.3"
-  resolved "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz"
-  integrity sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==
-
 function-bind@^1.1.2:
   version "1.1.2"
   resolved "https://registry.npmjs.org/function-bind/-/function-bind-1.1.2.tgz"
@@ -714,15 +709,7 @@ obsidian-daily-notes-interface@0.9.2:
     obsidian "github:obsidianmd/obsidian-api#master"
     tslib "2.1.0"
 
-obsidian@1.13.1:
-  version "1.13.1"
-  resolved "https://registry.npmjs.org/obsidian/-/obsidian-1.13.1.tgz"
-  integrity sha512-qtTEA2pmhJzhuhJqzbBFRYhpIOqvW+krDYjtFynv66KbxBbumHBlsJfWw3I4jtnK/6fZwbQhCrmmDdRwXmX56w==
-  dependencies:
-    "@types/codemirror" "5.60.8"
-    moment "2.29.4"
-
-"obsidian@github:obsidianmd/obsidian-api#master":
+obsidian@1.13.1, "obsidian@github:obsidianmd/obsidian-api#master":
   version "1.13.1"
   resolved "git+ssh://git@github.com/obsidianmd/obsidian-api.git"
   integrity sha512-NgY7YPSB3Y1AidBe5zEJkzBr/poFRPiNegw5UY6uhrXC3Hz0YHST3jnSxpE9THGWc+FBzE2yXraL+vIW7FjUjg==
