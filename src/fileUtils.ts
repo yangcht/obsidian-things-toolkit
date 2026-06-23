@@ -3,7 +3,6 @@ import type { App, Editor, TFile } from "obsidian";
 
 type MarkdownViewWithEditor = MarkdownView & {
   editor?: Editor;
-  sourceMode?: { cmEditor?: Editor };
 };
 
 function isMarkdownViewWithEditor(view: unknown): view is MarkdownViewWithEditor {
@@ -17,7 +16,7 @@ export function getEditorForFile(app: App, file: TFile): Editor | null {
     const { view } = leaf;
 
     if (isMarkdownViewWithEditor(view) && view.file === file) {
-      editor = view.editor ?? view.sourceMode?.cmEditor ?? null;
+      editor = view.editor ?? null;
     }
   });
 
