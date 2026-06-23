@@ -157,18 +157,6 @@
     eslint-plugin-react "7.37.3"
     eslint-plugin-security "1.4.0"
 
-"@obsidian-typings/obsidian-public-1.12.7@^6.18.0":
-  version "6.20.0"
-  resolved "https://registry.npmjs.org/@obsidian-typings/obsidian-public-1.12.7/-/obsidian-public-1.12.7-6.20.0.tgz"
-  integrity sha512-z5b7n7niCfkcg65+9D4MM333U1pgiVmJTbtU0jU3V62hcTHTSEqscyvOV6iISpdl4ecuOcssUGWljsBCBEzX9g==
-
-"@obsidian-typings/obsidian-public-latest@6.16.0":
-  version "6.16.0"
-  resolved "https://registry.npmjs.org/@obsidian-typings/obsidian-public-latest/-/obsidian-public-latest-6.16.0.tgz"
-  integrity sha512-Rd59GYcj1DejcdAu2OI6zT94Sb4eImVZiV5Mms1nfarpjB9b2GQ7eWAsuyGQ0WsiWUVL+7qhii/r9+mzSJCAZQ==
-  dependencies:
-    "@obsidian-typings/obsidian-public-1.12.7" "^6.18.0"
-
 "@pkgr/core@^0.1.0":
   version "0.1.2"
   resolved "https://registry.npmjs.org/@pkgr/core/-/core-0.1.2.tgz"
@@ -255,7 +243,7 @@
   resolved "https://registry.npmjs.org/@types/json5/-/json5-0.0.29.tgz"
   integrity sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==
 
-"@types/node@*", "@types/node@>=16.0.0", "@types/node@24.10.1":
+"@types/node@*", "@types/node@24.10.1":
   version "24.10.1"
   resolved "https://registry.npmjs.org/@types/node/-/node-24.10.1.tgz"
   integrity sha512-GNWcUTRBgIRJD5zj+Tq0fKOJ5XZajIiBroOF0yvj2bSU1WvNdYS/dn9UxwsujGW4JX06dnHyjV2y9rRaybH0iQ==

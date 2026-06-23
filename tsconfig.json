@@ -9,7 +9,7 @@
     "importHelpers": true,
     "strict": true,
     "noImplicitAny": true,
-    "types": ["node", "@obsidian-typings/obsidian-public-latest"],
+    "types": ["node"],
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "skipLibCheck": true
   },
