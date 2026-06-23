@@ -2,9 +2,9 @@
   "id": "things-toolkit",
   "name": "Things Toolkit",
   "description": "Sync Things3 completions into daily notes with review stats and privacy-aware macOS access.",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "author": "yangcht",
   "authorUrl": "https://github.com/yangcht",
   "isDesktopOnly": false,
-  "minAppVersion": "1.13.0"
+  "minAppVersion": "1.13.1"
 }
