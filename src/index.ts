@@ -15,8 +15,13 @@ import {
 
 import { getMoment, type MomentLike } from "./moment";
 import { ConfirmationModal } from "./modal";
-import { ToolkitRenderer } from "./renderer";
 import { getNextSyncDelayMs } from "./scheduler";
+import { ToolkitRenderer } from "./renderer";
+import {
+  isDailyReviewEmpty,
+  readDailyReviewFromFrontmatter,
+  writeDailyReviewToFrontmatter,
+} from "./reviewPersistence";
 import {
   ThingsToolkitReviewView,
   VIEW_TYPE_THINGS_TOOLKIT_REVIEW,
@@ -126,14 +131,12 @@ export default class ThingsToolkitPlugin extends Plugin {
       this.selectReviewDateFromFile(this.app.workspace.getActiveFile());
     });
 
-    if (this.isSyncSupported()) {
-      this.app.workspace.onLayoutReady(() => {
-        void this.refreshRecentDailyStats().then(() => {
-          this.updateStatusBar();
-          this.refreshReviewViews();
-        });
+    this.app.workspace.onLayoutReady(() => {
+      void this.refreshDailyReviewStateFromVault().then(() => {
+        this.updateStatusBar();
+        this.refreshReviewViews();
       });
-    }
+    });
 
     this.settingsTab = new ThingsToolkitSettingsTab(this.app, this);
     this.addSettingTab(this.settingsTab);
@@ -375,7 +378,7 @@ export default class ThingsToolkitPlugin extends Plugin {
 
       new Notice("Things Toolkit sync failed");
     } finally {
-      await this.refreshRecentDailyStats();
+      await this.refreshDailyReviewStateFromVault();
       this.updateStatusBar();
       this.refreshReviewViews();
       this.settingsTab?.display();
@@ -457,6 +460,97 @@ export default class ThingsToolkitPlugin extends Plugin {
     await this.writeOptions({ dailyStats });
   }
 
+  async refreshDailyReviewStateFromVault(): Promise<void> {
+    await this.migrateDailyReviewsToFrontmatter();
+    await this.refreshRecentDailyStats();
+    await this.refreshRecentDailyReviews();
+  }
+
+  async refreshRecentDailyReviews(
+    dayCount = this.getReviewWindowDayCount()
+  ): Promise<void> {
+    const moment = getMoment();
+    const dailyReviews: Record<string, IDailyLogbookReview> = {
+      ...(this.options.dailyReviews || {}),
+    };
+    const dailyNotes = getAllDailyNotes();
+    const end = moment().startOf("day");
+    const start = end.clone().subtract(dayCount - 1, "days");
+
+    for (
+      let date = start.clone();
+      date.isSameOrBefore(end);
+      date.add(1, "day")
+    ) {
+      const dateKey = getDateKey(date);
+      const dailyNote = getDailyNote(toDailyNoteDate(date), dailyNotes);
+
+      if (!isTFile(dailyNote)) {
+        delete dailyReviews[dateKey];
+        continue;
+      }
+
+      const review = this.readDailyReviewFromFile(dailyNote);
+      if (review) {
+        dailyReviews[dateKey] = review;
+      } else {
+        delete dailyReviews[dateKey];
+      }
+    }
+
+    await this.writeOptions({ dailyReviews });
+  }
+
+  private readDailyReviewFromFile(file: TFile): IDailyLogbookReview | null {
+    const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    return readDailyReviewFromFrontmatter(frontmatter);
+  }
+
+  private async migrateDailyReviewsToFrontmatter(): Promise<void> {
+    const dailyReviews = this.options.dailyReviews || {};
+    const entries = Object.entries(dailyReviews).filter(
+      ([, review]) => !isDailyReviewEmpty(review)
+    );
+
+    for (const [dateKey, review] of entries) {
+      const dailyNote = await this.getOrCreateDailyNoteForDateKey(dateKey);
+      const existingReview = this.readDailyReviewFromFile(dailyNote);
+
+      if (existingReview) {
+        continue;
+      }
+
+      await this.app.fileManager.processFrontMatter(dailyNote, (frontmatter) => {
+        if (readDailyReviewFromFrontmatter(frontmatter)) {
+          return;
+        }
+
+        writeDailyReviewToFrontmatter(frontmatter, review);
+      });
+    }
+  }
+
+  private async getOrCreateDailyNoteForDateKey(dateKey: string): Promise<TFile> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+      throw new Error(`Invalid daily review date: ${dateKey}`);
+    }
+  
+    const moment = getMoment();
+    const date = moment(dateKey, "YYYY-MM-DD");
+    const dailyNotes = getAllDailyNotes();
+    let dailyNote = getDailyNote(toDailyNoteDate(date), dailyNotes);
+  
+    if (!dailyNote) {
+      dailyNote = await createDailyNote(toDailyNoteDate(date));
+    }
+  
+    if (!isTFile(dailyNote)) {
+      throw new Error("Daily note could not be resolved as a file");
+    }
+  
+    return dailyNote;
+  }
+
   getCurrentCompletionStreak(): number {
     const moment = getMoment();
     let streak = 0;
@@ -487,7 +581,17 @@ export default class ThingsToolkitPlugin extends Plugin {
       updatedAt: moment().unix(),
     };
 
-    if (!nextReview.rating && !nextReview.reflection) {
+    if (nextReview.reflection !== undefined) {
+      nextReview.reflection = nextReview.reflection.trim();
+    }
+
+    const dailyNote = await this.getOrCreateDailyNoteForDateKey(dateKey);
+
+    await this.app.fileManager.processFrontMatter(dailyNote, (frontmatter) => {
+      writeDailyReviewToFrontmatter(frontmatter, nextReview);
+    });
+
+    if (isDailyReviewEmpty(nextReview)) {
       delete dailyReviews[dateKey];
     } else {
       dailyReviews[dateKey] = nextReview;
@@ -498,18 +602,7 @@ export default class ThingsToolkitPlugin extends Plugin {
   }
 
   async openDailyNote(dateKey: string): Promise<void> {
-    const moment = getMoment();
-    const date = moment(dateKey, "YYYY-MM-DD");
-    const dailyNotes = getAllDailyNotes();
-    let dailyNote = getDailyNote(toDailyNoteDate(date), dailyNotes);
-
-    if (!dailyNote) {
-      dailyNote = await createDailyNote(toDailyNoteDate(date));
-    }
-
-    if (!isTFile(dailyNote)) {
-      throw new Error("Daily note could not be opened as a file");
-    }
+    const dailyNote = await this.getOrCreateDailyNoteForDateKey(dateKey);
 
     const leaf = this.getDailyNoteOpenLeaf();
     await leaf.openFile(dailyNote, { active: true });

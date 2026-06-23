@@ -34,9 +34,7 @@ export class ThingsToolkitReviewView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    if (this.plugin.isSyncSupported()) {
-      await this.plugin.refreshRecentDailyStats();
-    }
+    await this.plugin.refreshDailyReviewStateFromVault();
     this.display();
   }
 
