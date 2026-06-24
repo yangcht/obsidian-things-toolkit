@@ -45,9 +45,9 @@ export function isDailyReviewEmpty(review: IDailyLogbookReview): boolean {
 }
 
 export function readDailyReviewFromFrontmatter(
-  frontmatter: FrontmatterRecord | null | undefined
+  frontmatter: unknown
 ): IDailyLogbookReview | null {
-  if (!frontmatter) {
+  if (!isRecord(frontmatter)) {
     return null;
   }
 

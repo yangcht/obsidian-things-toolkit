@@ -32,6 +32,7 @@ export interface IDailyLogbookReview {
 
 export interface ISettings {
   hasAcceptedDisclaimer: boolean;
+  hasMigratedDailyReviewsToFrontmatter: boolean;
   latestSyncTime: number;
   appleScriptFallbackLookbackDays: number;
   thingsAccessMode: ThingsAccessMode;
@@ -52,6 +53,7 @@ export interface ISettings {
 
 export const DEFAULT_SETTINGS: Readonly<ISettings> = Object.freeze({
   hasAcceptedDisclaimer: false,
+  hasMigratedDailyReviewsToFrontmatter: false,
   latestSyncTime: 0,
   appleScriptFallbackLookbackDays: DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS,
   thingsAccessMode: "auto",
@@ -81,7 +83,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
   display(): void {
     this.containerEl.empty();
 
-    new Setting(this.containerEl).setName("Sync Engine").setHeading();
+    new Setting(this.containerEl).setName("Sync engine").setHeading();
     if (this.toolkitPlugin.isSyncSupported()) {
       this.addResetLastSyncSetting();
       this.addThingsAccessModeSetting();
@@ -93,17 +95,17 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
       this.addUnsupportedSyncSetting();
     }
 
-    new Setting(this.containerEl).setName("Daily Notes").setHeading();
+    new Setting(this.containerEl).setName("Daily notes").setHeading();
     this.addSectionHeadingSetting();
     this.addDoesSyncNoteBodySetting();
     this.addDoesSyncProjectSetting();
     this.addDoesAddNewlineBeforeHeadingsSetting();
 
-    new Setting(this.containerEl).setName("Imported Tags").setHeading();
+    new Setting(this.containerEl).setName("Imported tags").setHeading();
     this.addTagPrefixSetting();
     this.addCanceledMarkSetting();
 
-    new Setting(this.containerEl).setName("Review Calendar").setHeading();
+    new Setting(this.containerEl).setName("Review calendar").setHeading();
     this.addReviewWindowDaysSetting();
   }
 

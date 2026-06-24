@@ -11,6 +11,7 @@ Things Toolkit connects Things3 with Obsidian daily notes. It imports completed 
 - Review a full year by default, grouped by month with ISO week numbers.
 - See monthly totals, active-day counts, best day, and selected-day week/month context.
 - Mark days as good, steady, or needing improvement, and save a short reflection.
+- Store review ratings and reflections in each daily note under the `things_toolkit_review` frontmatter property.
 - Open or create the selected daily note by clicking a calendar day or using the review detail button.
 
 ## macOS Privacy
@@ -55,6 +56,13 @@ The build runs type-aware linting, scheduler regression tests, TypeScript checki
 - Prevent rapid retry loops after failed periodic sync attempts.
 - Correct project-heading precedence when project grouping is enabled.
 - Add type-aware linting and scheduler regression tests to the build.
+
+## 1.7.0
+
+- Persist daily reviews in daily-note frontmatter so they travel with the vault.
+- Migrate existing plugin-stored reviews to frontmatter once, without recreating reviews removed later.
+- Keep Obsidian and Papa Parse declarations available to external source audits through registry-resolvable production dependencies.
+- Restore strict unsafe-value linting and add frontmatter parsing regression tests.
 
 ## Publishing
 

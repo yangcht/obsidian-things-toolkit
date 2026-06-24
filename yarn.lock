@@ -1890,26 +1890,25 @@ object.values@^1.1.6, object.values@^1.2.1:
     define-properties "^1.2.1"
     es-object-atoms "^1.0.0"
 
-obsidian-daily-notes-interface@0.9.2:
-  version "0.9.2"
-  resolved "https://registry.npmjs.org/obsidian-daily-notes-interface/-/obsidian-daily-notes-interface-0.9.2.tgz"
-  integrity sha512-prwSUpKcvtHjpHGpLm8TQVr5Z1k1ZkL4XdSt8A8JKX+QB+r8yoCxSjvgegKqtU+WVjEW5JYiijDr36FoseS+mQ==
+obsidian-daily-notes-interface@0.9.5:
+  version "0.9.5"
+  resolved "https://registry.npmjs.org/obsidian-daily-notes-interface/-/obsidian-daily-notes-interface-0.9.5.tgz"
+  integrity sha512-Jk1hFagCcMAC1B/LGHCeSLRWIvNCX4qJ6a5HDpUZqs8ckmdszzDKNTdnJZgCVzsUEQKdATJmoNW2kjMzk7+qhw==
   dependencies:
-    obsidian "github:obsidianmd/obsidian-api#master"
-    tslib "2.1.0"
+    tslib "2.5.0"
+
+obsidian@>=1.0.0, obsidian@1.13.1:
+  version "1.13.1"
+  resolved "https://registry.npmjs.org/obsidian/-/obsidian-1.13.1.tgz"
+  integrity sha512-qtTEA2pmhJzhuhJqzbBFRYhpIOqvW+krDYjtFynv66KbxBbumHBlsJfWw3I4jtnK/6fZwbQhCrmmDdRwXmX56w==
+  dependencies:
+    "@types/codemirror" "5.60.8"
+    moment "2.29.4"
 
 obsidian@1.12.3:
   version "1.12.3"
   resolved "https://registry.npmjs.org/obsidian/-/obsidian-1.12.3.tgz"
   integrity sha512-HxWqe763dOqzXjnNiHmAJTRERN8KILBSqxDSEqbeSr7W8R8Jxezzbca+nz1LiiqXnMpM8lV2jzAezw3CZ4xNUw==
-  dependencies:
-    "@types/codemirror" "5.60.8"
-    moment "2.29.4"
-
-obsidian@1.13.1, "obsidian@github:obsidianmd/obsidian-api#master":
-  version "1.13.1"
-  resolved "git+ssh://git@github.com/obsidianmd/obsidian-api.git"
-  integrity sha512-NgY7YPSB3Y1AidBe5zEJkzBr/poFRPiNegw5UY6uhrXC3Hz0YHST3jnSxpE9THGWc+FBzE2yXraL+vIW7FjUjg==
   dependencies:
     "@types/codemirror" "5.60.8"
     moment "2.29.4"
@@ -2417,10 +2416,10 @@ tslib@^2.6.2:
   resolved "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz"
   integrity sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==
 
-tslib@2.1.0:
-  version "2.1.0"
-  resolved "https://registry.npmjs.org/tslib/-/tslib-2.1.0.tgz"
-  integrity sha512-hcVC3wYEziELGGmEEXue7D75zbwIIVUMWAVbHItGPx0ziyXxrOMQx4rQEVEV45Ut/1IotuEvwqPopzIOkDMf0A==
+tslib@2.5.0:
+  version "2.5.0"
+  resolved "https://registry.npmjs.org/tslib/-/tslib-2.5.0.tgz"
+  integrity sha512-336iVw3rtn2BUK7ORdIAHTyxHGRIHVReokCR3XjbckJMK7ms8FysBfhLR8IXnAgy7T0PTPNBWKiH514FOW/WSg==
 
 tsx@4.22.4:
   version "4.22.4"

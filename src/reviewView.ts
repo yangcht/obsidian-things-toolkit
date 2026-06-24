@@ -26,7 +26,7 @@ export class ThingsToolkitReviewView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Things toolkit review";
+    return "Things Toolkit review";
   }
 
   getIcon(): string {

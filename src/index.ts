@@ -52,7 +52,7 @@ function isTFile(file: unknown): file is TFile {
 }
 
 function toDailyNoteDate(date: MomentLike): DailyNoteDate {
-  return date as unknown as DailyNoteDate;
+  return date;
 }
 
 function getDateKey(date: MomentLike): string {
@@ -109,7 +109,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       },
     });
 
-    this.addRibbonIcon("calendar-check", "Open Things toolkit review", () => {
+    this.addRibbonIcon("calendar-check", "Open Things Toolkit review", () => {
       void this.activateReviewView();
     });
 
@@ -320,7 +320,10 @@ export default class ThingsToolkitPlugin extends Plugin {
 
       for (const [dateStr, groupedTasks] of dayEntries) {
         const date = moment(dateStr);
-        let dailyNote = getDailyNote(toDailyNoteDate(date), dailyNotes);
+        let dailyNote: TFile | null | undefined = getDailyNote(
+          toDailyNoteDate(date),
+          dailyNotes
+        );
 
         if (!dailyNote) {
           dailyNote = await createDailyNote(toDailyNoteDate(date));
@@ -507,6 +510,10 @@ export default class ThingsToolkitPlugin extends Plugin {
   }
 
   private async migrateDailyReviewsToFrontmatter(): Promise<void> {
+    if (this.options.hasMigratedDailyReviewsToFrontmatter) {
+      return;
+    }
+
     const dailyReviews = this.options.dailyReviews || {};
     const entries = Object.entries(dailyReviews).filter(
       ([, review]) => !isDailyReviewEmpty(review)
@@ -520,14 +527,19 @@ export default class ThingsToolkitPlugin extends Plugin {
         continue;
       }
 
-      await this.app.fileManager.processFrontMatter(dailyNote, (frontmatter) => {
-        if (readDailyReviewFromFrontmatter(frontmatter)) {
-          return;
-        }
+      await this.app.fileManager.processFrontMatter(
+        dailyNote,
+        (frontmatter: Record<string, unknown>) => {
+          if (readDailyReviewFromFrontmatter(frontmatter)) {
+            return;
+          }
 
-        writeDailyReviewToFrontmatter(frontmatter, review);
-      });
+          writeDailyReviewToFrontmatter(frontmatter, review);
+        }
+      );
     }
+
+    await this.writeOptions({ hasMigratedDailyReviewsToFrontmatter: true });
   }
 
   private async getOrCreateDailyNoteForDateKey(dateKey: string): Promise<TFile> {
@@ -538,7 +550,10 @@ export default class ThingsToolkitPlugin extends Plugin {
     const moment = getMoment();
     const date = moment(dateKey, "YYYY-MM-DD");
     const dailyNotes = getAllDailyNotes();
-    let dailyNote = getDailyNote(toDailyNoteDate(date), dailyNotes);
+    let dailyNote: TFile | null | undefined = getDailyNote(
+      toDailyNoteDate(date),
+      dailyNotes
+    );
   
     if (!dailyNote) {
       dailyNote = await createDailyNote(toDailyNoteDate(date));
@@ -587,9 +602,12 @@ export default class ThingsToolkitPlugin extends Plugin {
 
     const dailyNote = await this.getOrCreateDailyNoteForDateKey(dateKey);
 
-    await this.app.fileManager.processFrontMatter(dailyNote, (frontmatter) => {
-      writeDailyReviewToFrontmatter(frontmatter, nextReview);
-    });
+    await this.app.fileManager.processFrontMatter(
+      dailyNote,
+      (frontmatter: Record<string, unknown>) => {
+        writeDailyReviewToFrontmatter(frontmatter, nextReview);
+      }
+    );
 
     if (isDailyReviewEmpty(nextReview)) {
       delete dailyReviews[dateKey];
@@ -647,7 +665,7 @@ export default class ThingsToolkitPlugin extends Plugin {
     const streak = this.getCurrentCompletionStreak();
 
     this.statusBarEl.setText(`Things: ${todayCount} today | ${streak}d streak`);
-    this.statusBarEl.setAttribute("aria-label", "Open Things toolkit review");
+    this.statusBarEl.setAttribute("aria-label", "Open Things Toolkit review");
   }
 
   cancelScheduledSync(): void {
