@@ -50,12 +50,13 @@ npm run build
 
 The build runs type-aware linting, scheduler regression tests, TypeScript checking, and the Rollup bundle. Test plugin builds in a dedicated Obsidian vault before using them with personal notes.
 
-## 1.6.0
+## 1.8.0
 
-- Fix external source audits that omit development-only type packages.
-- Prevent rapid retry loops after failed periodic sync attempts.
-- Correct project-heading precedence when project grouping is enabled.
-- Add type-aware linting and scheduler regression tests to the build.
+- Prevent repeated Things log sections in daily notes after changing the configured Section heading.
+- Mark newly synced Things log sections so future syncs can replace them even if the visible heading changes again.
+- Consolidate legacy duplicate generated Things sections on resync when they contain the same Things task IDs.
+- Keep review-calendar task counts working after generated section heading changes.
+- Keep the settings tab compatible with public Obsidian 1.12.x while deferring the 1.13-only `getSettingDefinitions()` API.
 
 ## 1.7.0
 
@@ -63,6 +64,13 @@ The build runs type-aware linting, scheduler regression tests, TypeScript checki
 - Migrate existing plugin-stored reviews to frontmatter once, without recreating reviews removed later.
 - Keep Obsidian and Papa Parse declarations available to external source audits through registry-resolvable production dependencies.
 - Restore strict unsafe-value linting and add frontmatter parsing regression tests.
+
+## 1.6.0
+
+- Fix external source audits that omit development-only type packages.
+- Prevent rapid retry loops after failed periodic sync attempts.
+- Correct project-heading precedence when project grouping is enabled.
+- Add type-aware linting and scheduler regression tests to the build.
 
 ## Publishing
 
@@ -74,6 +82,7 @@ For an Obsidian community plugin release, each GitHub release must include:
 
 The release tag must match the `version` in `manifest.json`.
 Attach these files directly to the release; do not attach `versions.json` or a zip file.
+Release descriptions are read from `RELEASE_NOTES.md`.
 
 For a new release:
 

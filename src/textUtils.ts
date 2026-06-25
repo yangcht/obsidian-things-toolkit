@@ -1,12 +1,18 @@
-import { Platform } from "obsidian";
 import type { App, TFile } from "obsidian";
 
 import { getEditorForFile } from "./fileUtils";
+import {
+  buildLogbookSectionUpdate,
+  getAppendText,
+  isSameRange,
+  type SectionRange,
+} from "./logbookSection";
 
-export function getHeadingLevel(line = ""): number | null {
-  const heading = line.match(/^(#{1,6})\s+\S/);
-  return heading ? heading[1].length : null;
-}
+export {
+  countThingsTasksInSection,
+  getHeadingLevel,
+  updateSectionContents,
+} from "./logbookSection";
 
 export function toHeading(
   title: string,
@@ -37,139 +43,78 @@ export function groupBy<T>(
   }, {} as Record<string | number, T[]>);
 }
 
-export function isMacOS(): boolean {
-  return Platform.isMacOS;
-}
-
 export async function updateSection(
   app: App,
   file: TFile,
   heading: string,
   sectionContents: string
 ): Promise<boolean> {
-  const headingLevel = getHeadingLevel(heading);
-  if (!headingLevel) {
-    throw new Error(`Invalid logbook section heading: ${heading}`);
-  }
-
   const { vault } = app;
   const fileContents = await vault.read(file);
-  const fileLines = fileContents.split("\n");
+  const update = buildLogbookSectionUpdate(
+    fileContents,
+    heading,
+    sectionContents
+  );
 
-  let logbookSectionLineNum = -1;
-  let nextSectionLineNum = -1;
-
-  for (let i = 0; i < fileLines.length; i++) {
-    if (fileLines[i].trim() === heading) {
-      logbookSectionLineNum = i;
-    } else if (logbookSectionLineNum !== -1) {
-      const currLevel = getHeadingLevel(fileLines[i]);
-      if (currLevel && currLevel <= headingLevel) {
-        nextSectionLineNum = i;
-        break;
-      }
-    }
+  if (!update.didChange) {
+    return false;
   }
 
   const editor = getEditorForFile(app, file);
   if (editor) {
-    if (logbookSectionLineNum !== -1) {
-      const currentSection = fileLines
-        .slice(
-          logbookSectionLineNum,
-          nextSectionLineNum !== -1 ? nextSectionLineNum : fileLines.length
-        )
-        .join("\n")
-        .trimEnd();
-
-      if (currentSection === sectionContents.trimEnd()) {
-        return false;
-      }
-
-      const from = { line: logbookSectionLineNum, ch: 0 };
-      const to =
-        nextSectionLineNum !== -1
-          ? { line: nextSectionLineNum, ch: 0 }
-          : { line: fileLines.length, ch: 0 };
-
-      editor.replaceRange(`${sectionContents}\n`, from, to);
+    const fileLines = fileContents.split("\n");
+    if (update.rangesToUpdate.length === 0) {
+      const to = getEditorEndPosition(fileLines);
+      editor.replaceRange(
+        getAppendText(fileContents, update.managedSection),
+        to,
+        to
+      );
       return true;
     }
 
-    const pos = { line: fileLines.length, ch: 0 };
-    editor.replaceRange(`\n\n${sectionContents}`, pos, pos);
+    [...update.rangesToUpdate]
+      .sort((left, right) => right.startLine - left.startLine)
+      .forEach((range) => {
+        const replacementText =
+          update.replacementRange && isSameRange(range, update.replacementRange)
+            ? getReplacementText(fileLines, range, update.managedSection)
+            : "";
+        editor.replaceRange(
+          replacementText,
+          { line: range.startLine, ch: 0 },
+          getEditorRangeEndPosition(fileLines, range)
+        );
+      });
     return true;
   }
 
-  if (logbookSectionLineNum !== -1) {
-    const prefix = fileLines.slice(0, logbookSectionLineNum);
-    const suffix =
-      nextSectionLineNum !== -1 ? fileLines.slice(nextSectionLineNum) : [];
-    const currentSection = fileLines
-      .slice(
-        logbookSectionLineNum,
-        nextSectionLineNum !== -1 ? nextSectionLineNum : fileLines.length
-      )
-      .join("\n")
-      .trimEnd();
-
-    if (currentSection === sectionContents.trimEnd()) {
-      return false;
-    }
-
-    await vault.process(file, () =>
-      [...prefix, sectionContents, ...suffix].join("\n")
-    );
-    return true;
-  }
-
-  await vault.process(file, () => [...fileLines, "", sectionContents].join("\n"));
+  await vault.process(file, () => update.contents);
   return true;
 }
 
-export function getSectionContents(
-  fileContents: string,
-  heading: string
+function getReplacementText(
+  fileLines: string[],
+  range: SectionRange,
+  managedSection: string
 ): string {
-  const headingLevel = getHeadingLevel(heading);
-  if (!headingLevel) {
-    return "";
-  }
-
-  const fileLines = fileContents.split("\n");
-  let sectionLineNum = -1;
-  let nextSectionLineNum = fileLines.length;
-
-  for (let i = 0; i < fileLines.length; i++) {
-    if (fileLines[i].trim() === heading) {
-      sectionLineNum = i;
-    } else if (sectionLineNum !== -1) {
-      const currLevel = getHeadingLevel(fileLines[i]);
-      if (currLevel && currLevel <= headingLevel) {
-        nextSectionLineNum = i;
-        break;
-      }
-    }
-  }
-
-  if (sectionLineNum === -1) {
-    return "";
-  }
-
-  return fileLines.slice(sectionLineNum, nextSectionLineNum).join("\n");
+  const suffix = range.endLine < fileLines.length ? "\n" : "";
+  return `${managedSection}${suffix}`;
 }
 
-export function countThingsTasksInSection(
-  fileContents: string,
-  heading: string
-): number {
-  const sectionContents = getSectionContents(fileContents, heading);
-  if (!sectionContents) {
-    return 0;
+function getEditorEndPosition(fileLines: string[]): { line: number; ch: number } {
+  const lastLine = Math.max(0, fileLines.length - 1);
+  return { line: lastLine, ch: fileLines[lastLine].length };
+}
+
+function getEditorRangeEndPosition(
+  fileLines: string[],
+  range: SectionRange
+): { line: number; ch: number } {
+  if (range.endLine < fileLines.length) {
+    return { line: range.endLine, ch: 0 };
   }
 
-  return sectionContents
-    .split("\n")
-    .filter((line) => /^- \[[ xXcC]\] .*things:\/\/\/show\?id=/.test(line))
-    .length;
+  return getEditorEndPosition(fileLines);
 }

@@ -41,7 +41,6 @@ import {
 import {
   countThingsTasksInSection,
   groupBy,
-  isMacOS,
   updateSection,
 } from "./textUtils";
 
@@ -153,7 +152,7 @@ export default class ThingsToolkitPlugin extends Plugin {
   }
 
   isSyncSupported(): boolean {
-    return Platform.isDesktopApp && isMacOS();
+    return Platform.isDesktopApp && Platform.isMacOS;
   }
 
   getSelectedReviewDate(): string {
