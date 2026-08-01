@@ -10,6 +10,8 @@ node_modules/*
 
 # Build output (attached as release assets, not committed)
 main.js
+*.zip
+eslint-report*.json
 
 # Exclude sourcemaps
 *.map

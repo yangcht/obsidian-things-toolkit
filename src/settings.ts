@@ -1,4 +1,11 @@
-import { App, PluginSettingTab, Setting, moment } from "obsidian";
+import {
+  App,
+  PluginSettingTab,
+  Setting,
+  moment,
+  type SettingDefinitionItem,
+  type SettingGroupItem,
+} from "obsidian";
 
 import type ThingsToolkitPlugin from "./index";
 import {
@@ -15,6 +22,28 @@ export const DEFAULT_SYNC_FREQUENCY_SECONDS = 30 * 60; // Every 30 minutes
 export const DEFAULT_REVIEW_WINDOW_DAYS = 365;
 export const DEFAULT_TAG_PREFIX = "things/";
 export const DEFAULT_CANCELLED_MARK = "c";
+
+type EditableSettingKey =
+  | "appleScriptFallbackLookbackDays"
+  | "canceledMark"
+  | "doesAddNewlineBeforeHeadings"
+  | "doesSyncNoteBody"
+  | "doesSyncProject"
+  | "isSyncEnabled"
+  | "reviewWindowDays"
+  | "sectionHeading"
+  | "syncInterval"
+  | "tagPrefix"
+  | "thingsAccessMode";
+
+function refreshDeclarativeSettings(tab: { update?: () => void }): boolean {
+  if (typeof tab.update !== "function") {
+    return false;
+  }
+
+  tab.update();
+  return true;
+}
 
 export type DayReviewRating = "good" | "steady" | "improve";
 
@@ -80,7 +109,218 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
     this.toolkitPlugin = plugin;
   }
 
+  getSettingDefinitions(): SettingDefinitionItem<EditableSettingKey>[] {
+    const syncItems: SettingGroupItem<EditableSettingKey>[] = this.toolkitPlugin.isSyncSupported()
+      ? [
+          {
+            name: "Sync status",
+            render: (setting) => {
+              this.configureResetLastSyncSetting(setting);
+            },
+          },
+          {
+            name: "Things access",
+            desc: "Auto tries the Things database first, then uses AppleScript when macOS privacy blocks direct access.",
+            control: {
+              type: "dropdown",
+              key: "thingsAccessMode",
+              options: {
+                auto: "Auto",
+                applescript: "AppleScript",
+                sqlite: "SQLite only",
+              },
+            },
+          },
+          {
+            name: "macOS privacy status",
+            render: (setting) => {
+              this.configureThingsAccessStatusSetting(setting);
+            },
+          },
+          {
+            name: "Enable periodic syncing",
+            control: {
+              type: "toggle",
+              key: "isSyncEnabled",
+            },
+          },
+          {
+            name: "Sync frequency",
+            desc: "Number of seconds the plugin will wait before syncing again",
+            control: {
+              type: "number",
+              key: "syncInterval",
+              min: 60,
+              step: 1,
+            },
+          },
+          {
+            name: "AppleScript fallback lookback",
+            desc: `Days to repair when macOS blocks direct Things database access. The recent review window always uses at least ${MIN_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS} days.`,
+            control: {
+              type: "number",
+              key: "appleScriptFallbackLookbackDays",
+              min: 1,
+              step: 1,
+            },
+          },
+        ]
+      : [
+          {
+            name: "Sync unavailable",
+            desc: "Things sync runs only in Obsidian for macOS. The plugin can stay enabled here so Obsidian Sync does not disable it on your Mac.",
+          },
+        ];
+
+    return [
+      {
+        type: "group",
+        heading: "Sync engine",
+        items: syncItems,
+      },
+      {
+        type: "group",
+        heading: "Daily notes",
+        items: [
+          {
+            name: "Section heading",
+            desc: "Markdown heading to replace or append when adding Things items to a daily note",
+            control: { type: "text", key: "sectionHeading" },
+          },
+          {
+            name: "Include notes",
+            desc: "Includes MD notes of a task into the synced Obsidian document",
+            control: { type: "toggle", key: "doesSyncNoteBody" },
+          },
+          {
+            name: "Include project",
+            desc: "If the Things task belongs to a project, use project name as header instead of area",
+            control: { type: "toggle", key: "doesSyncProject" },
+          },
+          {
+            name: "Empty line before headings",
+            desc: "When grouping tasks with headings by area or project, add an empty line before that heading",
+            control: {
+              type: "toggle",
+              key: "doesAddNewlineBeforeHeadings",
+            },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Imported tags",
+        items: [
+          {
+            name: "Tag prefix",
+            desc: "Prefix added to Things tags when imported into Obsidian (e.g. #things/work)",
+            control: { type: "text", key: "tagPrefix" },
+          },
+          {
+            name: "Canceled mark",
+            desc: "Mark character to use for canceled tasks",
+            control: { type: "text", key: "canceledMark" },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Review calendar",
+        items: [
+          {
+            name: "Review window",
+            desc: "Number of recent days to show and repair in the review calendar",
+            control: {
+              type: "number",
+              key: "reviewWindowDays",
+              min: 30,
+              step: 1,
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  getControlValue(key: string): unknown {
+    if (this.isEditableSettingKey(key)) {
+      return this.toolkitPlugin.options[key];
+    }
+
+    return undefined;
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    switch (key) {
+      case "thingsAccessMode":
+        if (value === "auto" || value === "applescript" || value === "sqlite") {
+          await this.toolkitPlugin.writeOptions({ thingsAccessMode: value });
+          this.refresh();
+        }
+        return;
+      case "sectionHeading":
+        if (typeof value === "string") {
+          await this.toolkitPlugin.writeOptions({
+            sectionHeading: this.normalizeSectionHeading(value),
+          });
+        }
+        return;
+      case "tagPrefix":
+      case "canceledMark":
+        if (typeof value === "string") {
+          await this.toolkitPlugin.writeOptions({ [key]: value });
+        }
+        return;
+      case "doesAddNewlineBeforeHeadings":
+      case "doesSyncNoteBody":
+      case "doesSyncProject":
+      case "isSyncEnabled":
+        if (typeof value === "boolean") {
+          await this.toolkitPlugin.writeOptions({ [key]: value });
+        }
+        return;
+      case "syncInterval":
+        await this.toolkitPlugin.writeOptions({
+          syncInterval: this.normalizePositiveInteger(
+            value,
+            60,
+            DEFAULT_SYNC_FREQUENCY_SECONDS
+          ),
+        });
+        return;
+      case "appleScriptFallbackLookbackDays":
+        await this.toolkitPlugin.writeOptions({
+          appleScriptFallbackLookbackDays: this.normalizePositiveInteger(
+            value,
+            1,
+            DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS
+          ),
+        });
+        return;
+      case "reviewWindowDays":
+        await this.toolkitPlugin.writeOptions({
+          reviewWindowDays: this.normalizePositiveInteger(
+            value,
+            30,
+            DEFAULT_REVIEW_WINDOW_DAYS
+          ),
+        });
+    }
+  }
+
+  refresh(): void {
+    if (refreshDeclarativeSettings(this)) {
+      return;
+    }
+
+    this.renderLegacySettings();
+  }
+
   display(): void {
+    this.renderLegacySettings();
+  }
+
+  private renderLegacySettings(): void {
     this.containerEl.empty();
 
     new Setting(this.containerEl).setName("Sync engine").setHeading();
@@ -107,6 +347,30 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
 
     new Setting(this.containerEl).setName("Review calendar").setHeading();
     this.addReviewWindowDaysSetting();
+  }
+
+  private isEditableSettingKey(key: string): key is EditableSettingKey {
+    return [
+      "appleScriptFallbackLookbackDays",
+      "canceledMark",
+      "doesAddNewlineBeforeHeadings",
+      "doesSyncNoteBody",
+      "doesSyncProject",
+      "isSyncEnabled",
+      "reviewWindowDays",
+      "sectionHeading",
+      "syncInterval",
+      "tagPrefix",
+      "thingsAccessMode",
+    ].includes(key);
+  }
+
+  private normalizePositiveInteger(
+    value: unknown,
+    minimum: number,
+    fallback: number
+  ): number {
+    return Math.max(minimum, Math.floor(Number(value) || fallback));
   }
 
   addSectionHeadingSetting(): void {
@@ -197,12 +461,16 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         dropdown.onChange(async (value: string) => {
           const thingsAccessMode = value as ThingsAccessMode;
           await this.toolkitPlugin.writeOptions({ thingsAccessMode });
-          this.display();
+          this.refresh();
         });
       });
   }
 
   addThingsAccessStatusSetting(): void {
+    this.configureThingsAccessStatusSetting(new Setting(this.containerEl));
+  }
+
+  private configureThingsAccessStatusSetting(setting: Setting): void {
     const accessStatus = this.toolkitPlugin.options.thingsAccessStatus;
     const statusText = accessStatus
       ? `${accessStatus.message} Checked ${moment
@@ -210,7 +478,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
           .fromNow()}.`
       : "Not checked yet. Run Sync now to test Things access.";
 
-    new Setting(this.containerEl)
+    setting
       .setName("macOS privacy status")
       .setDesc(statusText)
       .addButton((button) => {
@@ -362,6 +630,10 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
   }
 
   addResetLastSyncSetting(): void {
+    this.configureResetLastSyncSetting(new Setting(this.containerEl));
+  }
+
+  private configureResetLastSyncSetting(setting: Setting): void {
     const { latestSyncTime } = this.toolkitPlugin.options;
     const { syncStatus } = this.toolkitPlugin;
     const syncTime =
@@ -369,7 +641,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         ? moment.unix(this.toolkitPlugin.options.latestSyncTime).fromNow()
         : "Never";
 
-    new Setting(this.containerEl)
+    setting
       .setDesc(
         createFragment((el) => {
           el.appendText("Last sync: ");
@@ -388,7 +660,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         button.onClick(async () => {
           button.setDisabled(true);
           await this.toolkitPlugin.tryToSyncLogbook();
-          this.display();
+          this.refresh();
         });
       })
       .addButton((button) => {
@@ -397,7 +669,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         button.setDisabled(syncStatus.isSyncing);
         button.onClick(() => {
           void this.toolkitPlugin.writeOptions({ latestSyncTime: 0 });
-          this.display();
+          this.refresh();
         });
       })
       .addExtraButton((component) => {

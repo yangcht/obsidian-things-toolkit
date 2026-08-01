@@ -30,12 +30,6 @@ export default tseslint.config(
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
-
-      /*
-       * PluginSettingTab.display() is still required for public Obsidian 1.12.x.
-       * getSettingDefinitions() is available in 1.13, which is not public yet.
-       */
-      "@typescript-eslint/no-deprecated": "off",
       "obsidianmd/ui/sentence-case": [
         "warn",
         {

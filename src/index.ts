@@ -253,7 +253,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       },
       onCancel: () => {
         void this.writeOptions({ isSyncEnabled: false }).then(() => {
-          this.settingsTab?.display();
+          this.settingsTab?.refresh();
         });
       },
       text:
@@ -280,7 +280,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       isSyncing: true,
       message: "Syncing...",
     };
-    this.settingsTab?.display();
+    this.settingsTab?.refresh();
 
     const logbookRenderer = new ToolkitRenderer(this.app, this.options);
     const dailyNotes = getAllDailyNotes();
@@ -383,7 +383,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       await this.refreshDailyReviewStateFromVault();
       this.updateStatusBar();
       this.refreshReviewViews();
-      this.settingsTab?.display();
+      this.settingsTab?.refresh();
       this.scheduleNextSync();
     }
   }

@@ -50,6 +50,13 @@ npm run build
 
 The build runs type-aware linting, scheduler regression tests, TypeScript checking, and the Rollup bundle. Test plugin builds in a dedicated Obsidian vault before using them with personal notes.
 
+## 2.0.0
+
+- Keep the selected-day rating and reflection panel pinned while browsing the review calendar.
+- Resolve Moment types reliably in isolated automatic-review environments.
+- Add searchable Obsidian 1.13 settings while retaining compatibility with Obsidian 1.12.
+- Remove obsolete build artifacts and use GitHub-generated release notes.
+
 ## 1.9.0
 
 - Split the review sidebar into an independently scrollable calendar and a pinned selected-day review panel.
@@ -88,7 +95,7 @@ For an Obsidian community plugin release, each GitHub release must include:
 
 The release tag must match the `version` in `manifest.json`.
 Attach these files directly to the release; do not attach `versions.json` or a zip file.
-Release descriptions are read from `RELEASE_NOTES.md`.
+Release descriptions are generated from the Git history by GitHub.
 
 For a new release:
 
