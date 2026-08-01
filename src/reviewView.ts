@@ -2,6 +2,7 @@ import { ItemView, Notice, WorkspaceLeaf } from "obsidian";
 
 import type ThingsToolkitPlugin from "./index";
 import { getMoment, type MomentLike } from "./moment";
+import { getScrollTopToReveal } from "./reviewScroll";
 import { DayReviewRating } from "./settings";
 
 export const VIEW_TYPE_THINGS_TOOLKIT_REVIEW = "things-toolkit-review";
@@ -11,6 +12,10 @@ const RATING_LABELS: Record<DayReviewRating, string> = {
   steady: "Steady day",
   improve: "Needs improvement",
 };
+
+export interface ReviewViewDisplayOptions {
+  revealSelectedDate?: boolean;
+}
 
 export class ThingsToolkitReviewView extends ItemView {
   private plugin: ThingsToolkitPlugin;
@@ -35,11 +40,16 @@ export class ThingsToolkitReviewView extends ItemView {
 
   async onOpen(): Promise<void> {
     await this.plugin.refreshDailyReviewStateFromVault();
-    this.display();
+    this.display({ revealSelectedDate: true });
   }
 
-  display(): void {
+  display(options: ReviewViewDisplayOptions = {}): void {
     const { contentEl } = this;
+    const previousScrollTop =
+      contentEl.querySelector<HTMLElement>(
+        ".things-toolkit-review-calendar-region"
+      )?.scrollTop ?? 0;
+
     contentEl.empty();
     contentEl.addClass("things-toolkit-review");
 
@@ -62,6 +72,31 @@ export class ThingsToolkitReviewView extends ItemView {
     detailRegionEl.setAttribute("role", "region");
     detailRegionEl.setAttribute("aria-label", "Selected day review");
     this.renderSelectedDay(detailRegionEl);
+
+    if (options.revealSelectedDate) {
+      this.revealSelectedDate(calendarRegionEl);
+    } else {
+      calendarRegionEl.scrollTop = previousScrollTop;
+    }
+  }
+
+  private revealSelectedDate(calendarRegionEl: HTMLElement): void {
+    const selectedDateEl =
+      calendarRegionEl.querySelector<HTMLElement>(
+        ".things-toolkit-review-day.is-selected"
+      );
+
+    if (!selectedDateEl) {
+      return;
+    }
+
+    const viewport = calendarRegionEl.getBoundingClientRect();
+    const selectedDate = selectedDateEl.getBoundingClientRect();
+    calendarRegionEl.scrollTop = getScrollTopToReveal(
+      calendarRegionEl.scrollTop,
+      viewport,
+      selectedDate
+    );
   }
 
   private renderSummary(containerEl: HTMLElement): void {

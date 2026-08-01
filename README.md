@@ -50,6 +50,11 @@ npm run build
 
 The build runs type-aware linting, scheduler regression tests, TypeScript checking, and the Rollup bundle. Test plugin builds in a dedicated Obsidian vault before using them with personal notes.
 
+## 2.1.0
+
+- Keep the review calendar at its current scroll position when opening a daily note from a calendar day.
+- Reveal and select the corresponding calendar day when another daily note is opened.
+
 ## 2.0.1
 
 - Eliminate automatic-review unsafe-value warnings by explicitly typing the Moment boundary.

@@ -23,6 +23,7 @@ import {
   writeDailyReviewToFrontmatter,
 } from "./reviewPersistence";
 import {
+  type ReviewViewDisplayOptions,
   ThingsToolkitReviewView,
   VIEW_TYPE_THINGS_TOOLKIT_REVIEW,
 } from "./reviewView";
@@ -173,7 +174,7 @@ export default class ThingsToolkitPlugin extends Plugin {
     }
 
     this.selectedReviewDate = dateKey;
-    this.refreshReviewViews();
+    this.refreshReviewViews({ revealSelectedDate: true });
   }
 
   private getDailyNoteDateKey(file: TFile | null): string | null {
@@ -632,7 +633,7 @@ export default class ThingsToolkitPlugin extends Plugin {
     return this.app.workspace.getLeaf("tab");
   }
 
-  refreshReviewViews(): void {
+  refreshReviewViews(options: ReviewViewDisplayOptions = {}): void {
     const leaves: WorkspaceLeaf[] = this.app.workspace.getLeavesOfType(
       VIEW_TYPE_THINGS_TOOLKIT_REVIEW
     );
@@ -641,7 +642,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       const view = leaf.view;
 
       if (view instanceof ThingsToolkitReviewView) {
-        view.display();
+        view.display(options);
       }
     });
   }
