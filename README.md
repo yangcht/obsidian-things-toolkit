@@ -50,6 +50,11 @@ npm run build
 
 The build runs type-aware linting, scheduler regression tests, TypeScript checking, and the Rollup bundle. Test plugin builds in a dedicated Obsidian vault before using them with personal notes.
 
+## 2.0.1
+
+- Eliminate automatic-review unsafe-value warnings by explicitly typing the Moment boundary.
+- Align local linting with the current official Obsidian ESLint configuration.
+
 ## 2.0.0
 
 - Keep the selected-day rating and reflection panel pinned while browsing the review calendar.

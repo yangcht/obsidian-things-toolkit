@@ -44,14 +44,8 @@ import {
   updateSection,
 } from "./textUtils";
 
-type DailyNoteDate = Parameters<typeof getDailyNote>[0];
-
 function isTFile(file: unknown): file is TFile {
   return file instanceof TFile;
-}
-
-function toDailyNoteDate(date: MomentLike): DailyNoteDate {
-  return date;
 }
 
 function getDateKey(date: MomentLike): string {
@@ -320,12 +314,12 @@ export default class ThingsToolkitPlugin extends Plugin {
       for (const [dateStr, groupedTasks] of dayEntries) {
         const date = moment(dateStr);
         let dailyNote: TFile | null | undefined = getDailyNote(
-          toDailyNoteDate(date),
+          date,
           dailyNotes
         );
 
         if (!dailyNote) {
-          dailyNote = await createDailyNote(toDailyNoteDate(date));
+          dailyNote = await createDailyNote(date);
         }
 
         if (!isTFile(dailyNote)) {
@@ -437,7 +431,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       date.add(1, "day")
     ) {
       const dateKey = getDateKey(date);
-      const dailyNote = getDailyNote(toDailyNoteDate(date), dailyNotes);
+      const dailyNote = getDailyNote(date, dailyNotes);
 
       if (!isTFile(dailyNote)) {
         dailyStats[dateKey] = {
@@ -485,7 +479,7 @@ export default class ThingsToolkitPlugin extends Plugin {
       date.add(1, "day")
     ) {
       const dateKey = getDateKey(date);
-      const dailyNote = getDailyNote(toDailyNoteDate(date), dailyNotes);
+      const dailyNote = getDailyNote(date, dailyNotes);
 
       if (!isTFile(dailyNote)) {
         delete dailyReviews[dateKey];
@@ -550,14 +544,14 @@ export default class ThingsToolkitPlugin extends Plugin {
     const date = moment(dateKey, "YYYY-MM-DD");
     const dailyNotes = getAllDailyNotes();
     let dailyNote: TFile | null | undefined = getDailyNote(
-      toDailyNoteDate(date),
+      date,
       dailyNotes
     );
-  
+
     if (!dailyNote) {
-      dailyNote = await createDailyNote(toDailyNoteDate(date));
+      dailyNote = await createDailyNote(date);
     }
-  
+
     if (!isTFile(dailyNote)) {
       throw new Error("Daily note could not be resolved as a file");
     }

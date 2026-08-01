@@ -2,12 +2,12 @@ import {
   App,
   PluginSettingTab,
   Setting,
-  moment,
   type SettingDefinitionItem,
   type SettingGroupItem,
 } from "obsidian";
 
 import type ThingsToolkitPlugin from "./index";
+import { getMoment } from "./moment";
 import {
   DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS,
   IThingsAccessStatus,
@@ -16,6 +16,8 @@ import {
   ThingsToolkitSource,
 } from "./things";
 import { getChildProcessModule } from "./nodeUtils";
+
+const moment = getMoment();
 
 export const DEFAULT_SECTION_HEADING = "## Things";
 export const DEFAULT_SYNC_FREQUENCY_SECONDS = 30 * 60; // Every 30 minutes
