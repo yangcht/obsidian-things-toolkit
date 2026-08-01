@@ -1,5 +1,32 @@
 .things-toolkit-review {
-  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.things-toolkit-review-calendar-region {
+  flex: 1 1 0;
+  min-height: 160px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 12px 20px;
+  scrollbar-gutter: stable;
+}
+
+.things-toolkit-review-detail-region {
+  background: var(--background-primary);
+  border-top: 1px solid var(--background-modifier-border);
+  flex: 0 0 auto;
+  max-height: 55%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
 }
 
 .things-toolkit-review-summary {
@@ -127,9 +154,11 @@
 }
 
 .things-toolkit-review-detail {
-  border-top: 1px solid var(--background-modifier-border);
-  margin-top: 16px;
-  padding-top: 12px;
+  margin: 0;
+}
+
+.things-toolkit-review-detail h4 {
+  margin-top: 0;
 }
 
 .things-toolkit-review-detail-count {
@@ -175,9 +204,23 @@
 }
 
 .things-toolkit-review-reflection {
-  min-height: 92px;
+  min-height: 76px;
   resize: vertical;
   width: 100%;
+}
+
+.things-toolkit-review-actions {
+  margin-bottom: 0;
+}
+
+@media (max-height: 560px) {
+  .things-toolkit-review-calendar-region {
+    min-height: 112px;
+  }
+
+  .things-toolkit-review-detail-region {
+    max-height: 65%;
+  }
 }
 
 .things-toolkit-status {

@@ -43,9 +43,25 @@ export class ThingsToolkitReviewView extends ItemView {
     contentEl.empty();
     contentEl.addClass("things-toolkit-review");
 
-    this.renderSummary(contentEl);
-    this.renderCalendar(contentEl);
-    this.renderSelectedDay(contentEl);
+    const calendarRegionEl = contentEl.createDiv(
+      "things-toolkit-review-calendar-region"
+    );
+    calendarRegionEl.setAttribute("role", "region");
+    calendarRegionEl.setAttribute(
+      "aria-label",
+      "Things review summary and calendar"
+    );
+    calendarRegionEl.tabIndex = 0;
+
+    this.renderSummary(calendarRegionEl);
+    this.renderCalendar(calendarRegionEl);
+
+    const detailRegionEl = contentEl.createDiv(
+      "things-toolkit-review-detail-region"
+    );
+    detailRegionEl.setAttribute("role", "region");
+    detailRegionEl.setAttribute("aria-label", "Selected day review");
+    this.renderSelectedDay(detailRegionEl);
   }
 
   private renderSummary(containerEl: HTMLElement): void {

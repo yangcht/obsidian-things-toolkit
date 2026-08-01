@@ -50,6 +50,12 @@ npm run build
 
 The build runs type-aware linting, scheduler regression tests, TypeScript checking, and the Rollup bundle. Test plugin builds in a dedicated Obsidian vault before using them with personal notes.
 
+## 1.9.0
+
+- Split the review sidebar into an independently scrollable calendar and a pinned selected-day review panel.
+- Keep ratings, reflections, and daily-note actions visible while browsing older calendar months.
+- Preserve usable space for both review panes in shorter Obsidian windows.
+
 ## 1.8.0
 
 - Prevent repeated Things log sections in daily notes after changing the configured Section heading.
