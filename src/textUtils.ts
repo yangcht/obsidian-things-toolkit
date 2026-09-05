@@ -40,7 +40,7 @@ export function groupBy<T>(
     acc[val] = acc[val] || [];
     acc[val].push(elem);
     return acc;
-  }, {} as Record<string | number, T[]>);
+  }, Object.create(null) as Record<string | number, T[]>);
 }
 
 export async function updateSection(
@@ -50,7 +50,18 @@ export async function updateSection(
   sectionContents: string
 ): Promise<boolean> {
   const { vault } = app;
-  const fileContents = await vault.read(file);
+  const editor = getEditorForFile(app, file);
+  if (!editor) {
+    let didChange = false;
+    await vault.process(file, (fileContents) => {
+      const update = buildLogbookSectionUpdate(fileContents, heading, sectionContents);
+      didChange = update.didChange;
+      return update.contents;
+    });
+    return didChange;
+  }
+
+  const fileContents = editor.getValue();
   const update = buildLogbookSectionUpdate(
     fileContents,
     heading,
@@ -61,36 +72,30 @@ export async function updateSection(
     return false;
   }
 
-  const editor = getEditorForFile(app, file);
-  if (editor) {
-    const fileLines = fileContents.split("\n");
-    if (update.rangesToUpdate.length === 0) {
-      const to = getEditorEndPosition(fileLines);
-      editor.replaceRange(
-        getAppendText(fileContents, update.managedSection),
-        to,
-        to
-      );
-      return true;
-    }
-
-    [...update.rangesToUpdate]
-      .sort((left, right) => right.startLine - left.startLine)
-      .forEach((range) => {
-        const replacementText =
-          update.replacementRange && isSameRange(range, update.replacementRange)
-            ? getReplacementText(fileLines, range, update.managedSection)
-            : "";
-        editor.replaceRange(
-          replacementText,
-          { line: range.startLine, ch: 0 },
-          getEditorRangeEndPosition(fileLines, range)
-        );
-      });
+  const fileLines = fileContents.split("\n");
+  if (update.rangesToUpdate.length === 0) {
+    const to = getEditorEndPosition(fileLines);
+    editor.replaceRange(
+      getAppendText(fileContents, update.managedSection),
+      to,
+      to
+    );
     return true;
   }
 
-  await vault.process(file, () => update.contents);
+  [...update.rangesToUpdate]
+    .sort((left, right) => right.startLine - left.startLine)
+    .forEach((range) => {
+      const replacementText =
+        update.replacementRange && isSameRange(range, update.replacementRange)
+          ? getReplacementText(fileLines, range, update.managedSection)
+          : "";
+      editor.replaceRange(
+        replacementText,
+        { line: range.startLine, ch: 0 },
+        getEditorRangeEndPosition(fileLines, range)
+      );
+    });
   return true;
 }
 

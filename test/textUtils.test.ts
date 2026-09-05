@@ -184,3 +184,21 @@ test("counts tasks in the marked logbook section after a heading rename", () => 
 function countOccurrences(text: string, pattern: string): number {
   return text.split(pattern).length - 1;
 }
+
+test("preserves prose and subheadings after an unchanged managed section", () => {
+  const contents = [LOGBOOK_SECTION_START_MARKER, currentSection,
+    LOGBOOK_SECTION_END_MARKER, "", "Personal reflection", "#### More notes", "Keep me."].join("\n");
+  const result = updateSectionContents(contents, "### Things Daily Log", currentSection);
+  assert.equal(result.contents, contents);
+  assert.equal(result.didChange, false);
+});
+
+test("preserves trailing notes when updating a managed section", () => {
+  const suffix = "\n\nPersonal reflection\n#### More notes\nKeep me.";
+  const contents = [LOGBOOK_SECTION_START_MARKER, currentSection,
+    LOGBOOK_SECTION_END_MARKER].join("\n") + suffix;
+  const replacement = currentSection.replace("Task A", "Updated task");
+  const result = updateSectionContents(contents, "### Things Daily Log", replacement);
+  assert.equal(result.contents, [LOGBOOK_SECTION_START_MARKER, replacement,
+    LOGBOOK_SECTION_END_MARKER].join("\n") + suffix);
+});

@@ -59,9 +59,15 @@ export function buildLogbookSectionUpdate(
   const fileLines = fileContents.split("\n");
   const renderedTaskIds = extractThingsTaskIds(sectionContents.split("\n"));
   const markedRanges = findMarkedLogbookSectionRanges(fileLines);
-  const exactHeadingRanges = findHeadingSectionRanges(fileLines, headingLine);
+  // A heading inside a marked block must not extend past its closing marker.
+  const isOutsideMarkedSections = (range: SectionRange): boolean =>
+    !markedRanges.some(
+      (marked) => range.startLine >= marked.startLine && range.startLine < marked.endLine
+    );
+  const exactHeadingRanges = findHeadingSectionRanges(fileLines, headingLine)
+    .filter(isOutsideMarkedSections);
   const legacyRanges = findGeneratedLogbookSectionRanges(fileLines).filter(
-    (range) => hasSharedTaskId(range.taskIds, renderedTaskIds)
+    (range) => isOutsideMarkedSections(range) && hasSharedTaskId(range.taskIds, renderedTaskIds)
   );
   const targetRange =
     markedRanges[0] || exactHeadingRanges[0] || legacyRanges[0];

@@ -48,7 +48,14 @@ npm install
 npm run build
 ```
 
-The build runs type-aware linting, scheduler regression tests, TypeScript checking, and the Rollup bundle. Test plugin builds in a dedicated Obsidian vault before using them with personal notes.
+The build runs type-aware linting, sync and review regression tests, TypeScript checking of source and tests, and the Rollup bundle. Test plugin builds in a dedicated Obsidian vault before using them with personal notes.
+
+## 2.1.1
+
+- Preserve personal text and subheadings after the generated Things log section during sync.
+- Preserve unsaved editor text and concurrent changes to closed notes when syncing.
+- Support project and area names such as `constructor` and `__proto__` without sync failures.
+- Fix test type checking and update development dependencies to resolve reported security advisories.
 
 ## 2.1.0
 
