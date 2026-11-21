@@ -2,6 +2,7 @@ import { ItemView, Notice, WorkspaceLeaf } from "obsidian";
 
 import type ThingsToolkitPlugin from "./index";
 import { getMoment, type MomentLike } from "./moment";
+import { ReviewDraftStore } from "./reviewDrafts";
 import { getScrollTopToReveal } from "./reviewScroll";
 import { DayReviewRating } from "./settings";
 
@@ -17,9 +18,16 @@ export interface ReviewViewDisplayOptions {
   revealSelectedDate?: boolean;
 }
 
+function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural;
+}
+
 export class ThingsToolkitReviewView extends ItemView {
   private plugin: ThingsToolkitPlugin;
   private readonly moment = getMoment();
+  private readonly drafts = new ReviewDraftStore();
+  private reflectionTextareaEl: HTMLTextAreaElement | null = null;
+  private renderedReflectionDateKey: string | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: ThingsToolkitPlugin) {
     super(leaf);
@@ -39,16 +47,58 @@ export class ThingsToolkitReviewView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    await this.plugin.refreshDailyReviewStateFromVault();
+    try {
+      await this.plugin.refreshDailyReviewStateFromVault();
+    } catch (err) {
+      console.error("[Things Toolkit] Failed to refresh review state", err);
+    }
+
+    this.plugin.updateStatusBar();
     this.display({ revealSelectedDate: true });
   }
 
   display(options: ReviewViewDisplayOptions = {}): void {
     const { contentEl } = this;
-    const previousScrollTop =
+    const previousCalendarScrollTop =
       contentEl.querySelector<HTMLElement>(
         ".things-toolkit-review-calendar-region"
       )?.scrollTop ?? 0;
+    const previousDetailScrollTop =
+      contentEl.querySelector<HTMLElement>(
+        ".things-toolkit-review-detail-region"
+      )?.scrollTop ?? 0;
+    const previousDateKey = this.renderedReflectionDateKey;
+
+    let focusedSelection: {
+      dateKey: string;
+      end: number | null;
+      start: number | null;
+    } | null = null;
+
+    if (this.reflectionTextareaEl && this.renderedReflectionDateKey) {
+      const savedReflection =
+        this.plugin.options.dailyReviews[this.renderedReflectionDateKey]
+          ?.reflection;
+      this.drafts.setDraft(
+        this.renderedReflectionDateKey,
+        this.reflectionTextareaEl.value,
+        savedReflection
+      );
+
+      if (
+        typeof document !== "undefined" &&
+        document.activeElement === this.reflectionTextareaEl
+      ) {
+        focusedSelection = {
+          dateKey: this.renderedReflectionDateKey,
+          start: this.reflectionTextareaEl.selectionStart,
+          end: this.reflectionTextareaEl.selectionEnd,
+        };
+      }
+    }
+
+    this.reflectionTextareaEl = null;
+    this.renderedReflectionDateKey = null;
 
     contentEl.empty();
     contentEl.addClass("things-toolkit-review");
@@ -73,10 +123,29 @@ export class ThingsToolkitReviewView extends ItemView {
     detailRegionEl.setAttribute("aria-label", "Selected day review");
     this.renderSelectedDay(detailRegionEl);
 
+    calendarRegionEl.scrollTop = previousCalendarScrollTop;
     if (options.revealSelectedDate) {
       this.revealSelectedDate(calendarRegionEl);
-    } else {
-      calendarRegionEl.scrollTop = previousScrollTop;
+    }
+
+    if (previousDateKey && previousDateKey === this.renderedReflectionDateKey) {
+      detailRegionEl.scrollTop = previousDetailScrollTop;
+    }
+
+    if (
+      focusedSelection &&
+      focusedSelection.dateKey === this.renderedReflectionDateKey &&
+      this.reflectionTextareaEl !== null
+    ) {
+      const textarea = this.reflectionTextareaEl as HTMLTextAreaElement;
+      textarea.focus({ preventScroll: true });
+      if (focusedSelection.start !== null && focusedSelection.end !== null) {
+        const maxOffset = textarea.value.length;
+        textarea.setSelectionRange(
+          Math.min(focusedSelection.start, maxOffset),
+          Math.min(focusedSelection.end, maxOffset)
+        );
+      }
     }
   }
 
@@ -131,10 +200,14 @@ export class ThingsToolkitReviewView extends ItemView {
     const dates = this.getRecentDates(this.plugin.getReviewWindowDayCount());
     let startDate = dates[0];
     let endDate = dates[dates.length - 1];
-    const selectedDate = this.moment(
+    const parsedSelectedDate = this.moment(
       this.plugin.getSelectedReviewDate(),
-      "YYYY-MM-DD"
+      "YYYY-MM-DD",
+      true
     );
+    const selectedDate = parsedSelectedDate.isValid()
+      ? parsedSelectedDate
+      : this.moment().startOf("day");
 
     containerEl.createEl("h4", { text: "Review calendar" });
 
@@ -178,10 +251,18 @@ export class ThingsToolkitReviewView extends ItemView {
   }
 
   private renderSelectedDay(containerEl: HTMLElement): void {
-    const dateKey = this.plugin.getSelectedReviewDate();
-    const date = this.moment(dateKey, "YYYY-MM-DD");
+    const parsedDate = this.moment(
+      this.plugin.getSelectedReviewDate(),
+      "YYYY-MM-DD",
+      true
+    );
+    const date = parsedDate.isValid()
+      ? parsedDate
+      : this.moment().startOf("day");
+    const dateKey = date.format("YYYY-MM-DD");
     const review = this.plugin.options.dailyReviews[dateKey] || {};
     const stat = this.plugin.options.dailyStats[dateKey];
+    const taskCount = stat?.taskCount || 0;
     const detailEl = containerEl.createDiv("things-toolkit-review-detail");
 
     detailEl.createEl("h4", {
@@ -189,7 +270,7 @@ export class ThingsToolkitReviewView extends ItemView {
     });
     detailEl.createDiv({
       cls: "things-toolkit-review-detail-count",
-      text: `${stat?.taskCount || 0} completed tasks • Week ${date.isoWeek()}`,
+      text: `${taskCount} completed ${pluralize(taskCount, "task", "tasks")} • Week ${date.isoWeek()}`,
     });
 
     const contextEl = detailEl.createDiv("things-toolkit-review-context");
@@ -211,44 +292,104 @@ export class ThingsToolkitReviewView extends ItemView {
 
     const ratingEl = detailEl.createDiv("things-toolkit-review-rating");
     (Object.keys(RATING_LABELS) as DayReviewRating[]).forEach((rating) => {
+      const isActive = review.rating === rating;
       const buttonEl = ratingEl.createEl("button", {
         text: RATING_LABELS[rating],
       });
-      if (review.rating === rating) {
+      buttonEl.setAttribute("aria-pressed", String(isActive));
+      if (isActive) {
         buttonEl.addClass("is-active");
       }
       buttonEl.addEventListener("click", () => {
-        void this.plugin.writeDayReview(dateKey, { rating }).then(() => {
-          this.display();
-        });
+        const nextRating = isActive ? undefined : rating;
+        if (this.reflectionTextareaEl) {
+          this.drafts.setDraft(
+            dateKey,
+            this.reflectionTextareaEl.value,
+            review.reflection
+          );
+        }
+        void this.plugin
+          .writeDayReview(dateKey, { rating: nextRating })
+          .catch((err) => {
+            console.error("[Things Toolkit] Failed to save day rating", err);
+            new Notice("Failed to save Things review");
+          });
       });
     });
 
     const textareaEl = detailEl.createEl("textarea", {
       cls: "things-toolkit-review-reflection",
       attr: {
-        placeholder: "One short note about what worked, what slipped, or what to adjust tomorrow.",
+        placeholder:
+          "One short note about what worked, what slipped, or what to adjust tomorrow.",
       },
     });
-    textareaEl.value = review.reflection || "";
+    textareaEl.value = this.drafts.getEditorValue(dateKey, review.reflection);
+    this.reflectionTextareaEl = textareaEl;
+    this.renderedReflectionDateKey = dateKey;
 
     const actionsEl = detailEl.createDiv("things-toolkit-review-actions");
-    actionsEl
-      .createEl("button", { text: "Save reflection" })
-      .addEventListener("click", () => {
-        void this.plugin.writeDayReview(dateKey, {
-          reflection: textareaEl.value.trim(),
-        }).then(() => {
-          new Notice("Things review saved");
-          this.display();
-        });
-      });
+    const saveButtonEl = actionsEl.createEl("button", {
+      text: "Save reflection",
+    });
+    const openNoteButtonEl = actionsEl.createEl("button", {
+      text: "Open daily note",
+    });
+    const draftStatusEl = actionsEl.createSpan({
+      cls: "things-toolkit-review-draft-status",
+    });
 
-    actionsEl
-      .createEl("button", { text: "Open daily note" })
-      .addEventListener("click", () => {
-        void this.plugin.openDailyNote(dateKey);
+    const syncDraftIndicator = () => {
+      const hasDraft = this.drafts.hasUnsavedDraft(dateKey, review.reflection);
+      saveButtonEl.toggleClass("mod-cta", hasDraft);
+      draftStatusEl.setText(hasDraft ? "Unsaved changes" : "");
+    };
+    syncDraftIndicator();
+
+    const saveReflection = async () => {
+      const rawValue = textareaEl.value;
+      this.drafts.setDraft(dateKey, rawValue, review.reflection);
+      saveButtonEl.disabled = true;
+
+      try {
+        await this.plugin.writeDayReview(dateKey, {
+          reflection: rawValue.trim(),
+        });
+        this.drafts.clearDraftIfUnchanged(dateKey, rawValue);
+        new Notice("Things review saved");
+        if (rawValue !== rawValue.trim()) {
+          this.display();
+        }
+      } catch (err) {
+        console.error("[Things Toolkit] Failed to save reflection", err);
+        saveButtonEl.disabled = false;
+        new Notice("Failed to save Things review");
+      }
+    };
+
+    textareaEl.addEventListener("input", () => {
+      this.drafts.setDraft(dateKey, textareaEl.value, review.reflection);
+      syncDraftIndicator();
+    });
+
+    textareaEl.addEventListener("keydown", (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        void saveReflection();
+      }
+    });
+
+    saveButtonEl.addEventListener("click", () => {
+      void saveReflection();
+    });
+
+    openNoteButtonEl.addEventListener("click", () => {
+      void this.plugin.openDailyNote(dateKey).catch((err) => {
+        console.error("[Things Toolkit] Failed to open daily note", err);
+        new Notice("Failed to open daily note");
       });
+    });
   }
 
   private renderMonth(
@@ -266,7 +407,7 @@ export class ThingsToolkitReviewView extends ItemView {
     });
     headerEl.createDiv({
       cls: "things-toolkit-review-month-meta",
-      text: `${summary.total} tasks • ${summary.activeDays} active days • best ${summary.bestDay}`,
+      text: `${summary.total} ${pluralize(summary.total, "task", "tasks")} • ${summary.activeDays} active ${pluralize(summary.activeDays, "day", "days")} • best ${summary.bestDay}`,
     });
 
     const gridEl = monthEl.createDiv("things-toolkit-review-calendar-grid");
@@ -308,19 +449,24 @@ export class ThingsToolkitReviewView extends ItemView {
     const dateKey = date.format("YYYY-MM-DD");
     const count = this.plugin.getTaskCountForDay(dateKey);
     const review = this.plugin.options.dailyReviews[dateKey];
+    const isSelected = dateKey === this.plugin.getSelectedReviewDate();
     const buttonEl = containerEl.createEl("button", {
       cls: "things-toolkit-review-day",
     });
     buttonEl.setAttribute(
       "aria-label",
-      `${date.format("MMM D, YYYY")}: ${count} tasks, week ${date.isoWeek()}`
+      `${date.format("MMM D, YYYY")}: ${count} ${pluralize(count, "task", "tasks")}, week ${date.isoWeek()}`
     );
 
-    if (dateKey === this.plugin.getSelectedReviewDate()) {
+    if (isSelected) {
       buttonEl.addClass("is-selected");
+      buttonEl.setAttribute("aria-current", "date");
     }
     if (review?.rating) {
       buttonEl.addClass(`is-${review.rating}`);
+    }
+    if (review?.reflection) {
+      buttonEl.addClass("has-reflection");
     }
     if (count > 0) {
       buttonEl.addClass("has-tasks");
@@ -336,7 +482,12 @@ export class ThingsToolkitReviewView extends ItemView {
     });
 
     buttonEl.addEventListener("click", () => {
-      void this.plugin.selectReviewDate(dateKey, { openDailyNote: true });
+      void this.plugin
+        .selectReviewDate(dateKey, { openDailyNote: true })
+        .catch((err) => {
+          console.error("[Things Toolkit] Failed to open daily note", err);
+          new Notice("Failed to open daily note");
+        });
     });
   }
 

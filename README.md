@@ -50,6 +50,15 @@ npm run build
 
 The build runs type-aware linting, sync and review regression tests, TypeScript checking of source and tests, and the Rollup bundle. Test plugin builds in a dedicated Obsidian vault before using them with personal notes.
 
+## 2.2.0
+
+- Use stable keyset pagination when querying the Things SQLite database so tasks with tied timestamps or multiple tags are never dropped across batch boundaries.
+- Retrieve checklist items by parent task in Things checklist order, including unchecked items and items completed before the repair cutoff.
+- Fix SQLite and AppleScript subprocess reliability (wait for stream close, preserve split multi-byte UTF-8 chunks, add SQLite busy timeout, and prevent end-of-month AppleScript cutoff date rollover).
+- Add plugin unload cleanup, isolate post-sync vault refresh failures so periodic syncing keeps running, and handle missing daily-notes folders and concurrent daily-note writes safely.
+- Preserve unsaved reflection drafts and editor focus across rating changes, date navigation, and background sync refreshes, allow toggling ratings off, and sync live frontmatter edits.
+- Keep uncategorized tasks directly under the main Things heading, default missing vault tab settings safely, support custom canceled marks, ignore fenced code blocks, and preserve CRLF line endings.
+
 ## 2.1.1
 
 - Preserve personal text and subheadings after the generated Things log section during sync.

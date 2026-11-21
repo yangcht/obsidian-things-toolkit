@@ -20,15 +20,20 @@ export function toHeading(
   addEmptyLine: boolean
 ): string {
   const emptyLine = addEmptyLine ? "\n" : "";
-  const hash = "".padStart(level, "#");
+  const clampedLevel = Math.min(6, Math.max(1, Math.floor(level)));
+  const hash = "".padStart(clampedLevel, "#");
   return `${emptyLine}${hash} ${title}`;
 }
 
-export function getTab(useTab: boolean, tabSize: number): string {
-  if (useTab) {
+export function getTab(useTab?: boolean, tabSize?: number): string {
+  if (useTab ?? true) {
     return "\t";
   }
-  return "".padStart(tabSize, " ");
+  const normalizedSize =
+    typeof tabSize === "number" && Number.isFinite(tabSize) && tabSize > 0
+      ? Math.floor(tabSize)
+      : 4;
+  return "".padStart(normalizedSize, " ");
 }
 
 export function groupBy<T>(
@@ -72,9 +77,9 @@ export async function updateSection(
     return false;
   }
 
-  const fileLines = fileContents.split("\n");
+  const currentLines = fileContents.split("\n");
   if (update.rangesToUpdate.length === 0) {
-    const to = getEditorEndPosition(fileLines);
+    const to = getEditorEndPosition(currentLines);
     editor.replaceRange(
       getAppendText(fileContents, update.managedSection),
       to,
@@ -83,29 +88,44 @@ export async function updateSection(
     return true;
   }
 
+  const managedLines = update.managedSection.split("\n");
   [...update.rangesToUpdate]
     .sort((left, right) => right.startLine - left.startLine)
     .forEach((range) => {
-      const replacementText =
+      const isReplacement = Boolean(
         update.replacementRange && isSameRange(range, update.replacementRange)
-          ? getReplacementText(fileLines, range, update.managedSection)
-          : "";
-      editor.replaceRange(
-        replacementText,
-        { line: range.startLine, ch: 0 },
-        getEditorRangeEndPosition(fileLines, range)
       );
+
+      if (isReplacement) {
+        const hasTrailingLines = range.endLine < currentLines.length;
+        const replacementText = hasTrailingLines
+          ? `${update.managedSection}\n`
+          : update.managedSection;
+        editor.replaceRange(
+          replacementText,
+          { line: range.startLine, ch: 0 },
+          getEditorRangeEndPosition(currentLines, range)
+        );
+        currentLines.splice(
+          range.startLine,
+          range.endLine - range.startLine,
+          ...managedLines
+        );
+        return;
+      }
+
+      const from =
+        range.endLine < currentLines.length || range.startLine === 0
+          ? { line: range.startLine, ch: 0 }
+          : {
+              line: range.startLine - 1,
+              ch: currentLines[range.startLine - 1].length,
+            };
+      const to = getEditorRangeEndPosition(currentLines, range);
+      editor.replaceRange("", from, to);
+      currentLines.splice(range.startLine, range.endLine - range.startLine);
     });
   return true;
-}
-
-function getReplacementText(
-  fileLines: string[],
-  range: SectionRange,
-  managedSection: string
-): string {
-  const suffix = range.endLine < fileLines.length ? "\n" : "";
-  return `${managedSection}${suffix}`;
 }
 
 function getEditorEndPosition(fileLines: string[]): { line: number; ch: number } {

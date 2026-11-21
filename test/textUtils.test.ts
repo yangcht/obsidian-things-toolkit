@@ -202,3 +202,105 @@ test("preserves trailing notes when updating a managed section", () => {
   assert.equal(result.contents, [LOGBOOK_SECTION_START_MARKER, replacement,
     LOGBOOK_SECTION_END_MARKER].join("\n") + suffix);
 });
+
+test("counts tasks and detects legacy sections with custom canceled marks", () => {
+  const customCanceledSection = [
+    "### Old Things",
+    "- [-] [Canceled task](things:///show?id=task-c)",
+    "- [x] [Done task](things:///show?id=task-d)",
+  ].join("\n");
+
+  assert.equal(
+    countThingsTasksInSection(customCanceledSection, "### Things Daily Log"),
+    2
+  );
+
+  const updatedSection = [
+    "### Things Daily Log",
+    "- [-] [Canceled task](things:///show?id=task-c)",
+    "- [x] [Done task](things:///show?id=task-d)",
+  ].join("\n");
+
+  const result = updateSectionContents(
+    ["# Journal", "", customCanceledSection].join("\n"),
+    "### Things Daily Log",
+    updatedSection
+  );
+
+  assert.equal(result.didChange, true);
+  assert.doesNotMatch(result.contents, /### Old Things/);
+  assert.equal(countOccurrences(result.contents, "things:///show?id=task-c"), 1);
+});
+
+test("ignores headings and markers inside fenced code blocks", () => {
+  const fileContents = [
+    "# Journal",
+    "",
+    "```markdown",
+    LOGBOOK_SECTION_START_MARKER,
+    "### Things Daily Log",
+    "Example snippet",
+    LOGBOOK_SECTION_END_MARKER,
+    "```",
+  ].join("\n");
+
+  const result = updateSectionContents(
+    fileContents,
+    "### Things Daily Log",
+    currentSection
+  );
+
+  assert.equal(result.didChange, true);
+  assert.ok(result.contents.startsWith(fileContents));
+  assert.equal(countOccurrences(result.contents, "Example snippet"), 1);
+  assert.equal(countOccurrences(result.contents, "things:///show?id=task-a"), 1);
+});
+
+test("preserves personal notes after an orphaned start marker before a real marked section", () => {
+  const fileContents = [
+    "# Journal",
+    LOGBOOK_SECTION_START_MARKER,
+    "Important personal note that must survive",
+    LOGBOOK_SECTION_START_MARKER,
+    oldSection,
+    LOGBOOK_SECTION_END_MARKER,
+  ].join("\n");
+
+  const result = updateSectionContents(
+    fileContents,
+    "### Things Daily Log",
+    currentSection
+  );
+
+  assert.equal(result.didChange, true);
+  assert.match(result.contents, /Important personal note that must survive/);
+  assert.doesNotMatch(result.contents, /### Daily_Things3/);
+  assert.equal(countOccurrences(result.contents, "things:///show?id=task-a"), 1);
+});
+
+test("preserves CRLF line endings cleanly and remains idempotent", () => {
+  const crlfContents = [
+    "# Journal",
+    "",
+    LOGBOOK_SECTION_START_MARKER,
+    currentSection.replace(/\n/g, "\r\n"),
+    LOGBOOK_SECTION_END_MARKER,
+  ].join("\r\n");
+
+  const unchanged = updateSectionContents(
+    crlfContents,
+    "### Things Daily Log",
+    currentSection
+  );
+  assert.equal(unchanged.didChange, false);
+  assert.equal(unchanged.contents, crlfContents);
+
+  const appended = updateSectionContents(
+    "# Journal\r\n",
+    "### Things Daily Log",
+    currentSection
+  );
+  assert.equal(appended.didChange, true);
+  assert.equal(appended.contents.includes("\r\n"), true);
+  assert.equal(appended.contents.replace(/\r\n/g, "").includes("\n"), false);
+});

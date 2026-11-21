@@ -6,14 +6,37 @@ import {
   getFsModule,
   getOsModule,
   getPathModule,
+  type FsModuleLike,
+  type OsModuleLike,
+  type PathModuleLike,
 } from "./nodeUtils";
-import { querySqliteDB } from "./sqlite";
+import { decodeStreamChunk, querySqliteDB } from "./sqlite";
 
 export const TASK_FETCH_LIMIT = 1000;
+export const CHECKLIST_TASK_BATCH_SIZE = 200;
 export const DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS = 365;
 export const MIN_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS = 365;
 const APPLESCRIPT_RECORD_SEPARATOR = "\x1e";
 const STATUS_COMPLETED = "3";
+
+export type SqliteQueryFn = <T>(dbPath: string, query: string) => Promise<T[]>;
+
+export interface ISqliteFetchOptions {
+  batchLimit?: number;
+  dbPath?: string;
+  querySqlite?: SqliteQueryFn;
+}
+
+export interface IChecklistFetchOptions {
+  dbPath?: string;
+  querySqlite?: SqliteQueryFn;
+  taskBatchSize?: number;
+}
+
+interface ITaskPageCursor {
+  stopDate: number;
+  uuid: string;
+}
 
 export interface ISubTask {
   completed: boolean;
@@ -95,10 +118,14 @@ class ThingsSqlitePrivacyError extends Error {
   }
 }
 
-function getThingsSqlitePath(): string {
-  const os = getOsModule();
-  const fs = getFsModule();
-  const path = getPathModule();
+export function findThingsSqlitePath(deps?: {
+  fs?: FsModuleLike;
+  os?: OsModuleLike;
+  path?: PathModuleLike;
+}): string {
+  const os = deps?.os ?? getOsModule();
+  const fs = deps?.fs ?? getFsModule();
+  const path = deps?.path ?? getPathModule();
   // Info on how to find the Things db file here:
   // https://culturedcode.com/things/support/articles/2982272/
   const baseDir = THINGS_DB_PATH_START.replace("~", os.homedir());
@@ -114,17 +141,32 @@ function getThingsSqlitePath(): string {
     throw err;
   }
 
-  const dataPath = dataFiles.find((file) => file.startsWith("ThingsData")) ?? "";
-  const dbPath = dataPath ? path.join(baseDir, dataPath, THINGS_DB_PATH_END) : "";
+  const candidatePaths = dataFiles
+    .filter((file) => file.startsWith("ThingsData"))
+    .map((dataPath) => path.join(baseDir, dataPath, THINGS_DB_PATH_END))
+    .filter((candidatePath) => fs.existsSync(candidatePath));
 
-  if (!dbPath || !fs.existsSync(dbPath)) {
+  if (candidatePaths.length === 0) {
     throw new Error("Things database not found");
   }
 
-  return dbPath;
+  if (candidatePaths.length === 1 || typeof fs.statSync !== "function") {
+    return candidatePaths[0];
+  }
+
+  const statSync = fs.statSync.bind(fs);
+  return candidatePaths
+    .map((candidatePath) => {
+      try {
+        return { candidatePath, mtimeMs: statSync(candidatePath).mtimeMs };
+      } catch {
+        return { candidatePath, mtimeMs: -1 };
+      }
+    })
+    .sort((left, right) => right.mtimeMs - left.mtimeMs)[0].candidatePath;
 }
 
-function isFileAccessDeniedError(err: unknown): boolean {
+export function isFileAccessDeniedError(err: unknown): boolean {
   const error =
     err && typeof err === "object"
       ? (err as { code?: string; message?: string })
@@ -132,12 +174,37 @@ function isFileAccessDeniedError(err: unknown): boolean {
   return (
     error?.code === "EPERM" ||
     error?.code === "EACCES" ||
-    String(error?.message || "").includes("operation not permitted")
+    /operation not permitted|permission denied|authorization denied/i.test(
+      String(error?.message || "")
+    )
   );
 }
 
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function toFiniteNumber(value: unknown): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return 0;
+    }
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function escapeSqlString(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+function getCalendarDayDiff(nowStartOfDay: MomentLike, cutoff: MomentLike): number {
+  return Math.max(0, Math.round(nowStartOfDay.diff(cutoff, "days", true)));
 }
 
 function buildAccessStatus(
@@ -169,21 +236,12 @@ function getRepairCutoff(
   return repairCutoff;
 }
 
-function getLastStopDate<T extends { stopDate: number }>(
-  records: T[]
-): number | null {
-  const recordsWithStopDate = records.filter((record) => record.stopDate);
-  return recordsWithStopDate[recordsWithStopDate.length - 1]?.stopDate ?? null;
-}
-
-function chunkToString(chunk: unknown): string {
-  return typeof chunk === "string" ? chunk : String(chunk);
-}
-
 function runAppleScript(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const stdOut: string[] = [];
     const stdErr: string[] = [];
+    const stdOutDecoder = new TextDecoder("utf-8");
+    const stdErrDecoder = new TextDecoder("utf-8");
     let settled = false;
 
     const finish = (err?: Error) => {
@@ -191,6 +249,15 @@ function runAppleScript(script: string): Promise<string> {
         return;
       }
       settled = true;
+
+      const trailingOut = stdOutDecoder.decode();
+      if (trailingOut) {
+        stdOut.push(trailingOut);
+      }
+      const trailingErr = stdErrDecoder.decode();
+      if (trailingErr) {
+        stdErr.push(trailingErr);
+      }
 
       if (err) {
         reject(err);
@@ -201,14 +268,24 @@ function runAppleScript(script: string): Promise<string> {
 
     const childProcess = getChildProcessModule();
     const spawned = childProcess.spawn("osascript", ["-e", script]);
-    spawned.stdout.on("data", (chunk: unknown) => stdOut.push(chunkToString(chunk)));
-    spawned.stderr.on("data", (chunk: unknown) => stdErr.push(chunkToString(chunk)));
+    spawned.stdout.on("data", (chunk: unknown) =>
+      stdOut.push(decodeStreamChunk(stdOutDecoder, chunk))
+    );
+    spawned.stderr.on("data", (chunk: unknown) =>
+      stdErr.push(decodeStreamChunk(stdErrDecoder, chunk))
+    );
     spawned.on("error", finish);
     spawned.on("close", (code: number | null) => {
       if (code === 0) {
         finish();
       } else {
-        finish(new Error(stdErr.join("")));
+        const trailingErr = stdErrDecoder.decode();
+        if (trailingErr) {
+          stdErr.push(trailingErr);
+        }
+        const message =
+          stdErr.join("").trim() || `osascript exited with code ${String(code)}`;
+        finish(new Error(message));
       }
     });
   });
@@ -248,9 +325,10 @@ function getAppleScriptCutoff(
   return lookbackCutoff;
 }
 
-function buildThingsToolkitAppleScript(cutoff: MomentLike): string {
+export function buildThingsToolkitAppleScript(cutoff: MomentLike): string {
   return `
 set cutoff to current date
+set day of cutoff to 1
 set year of cutoff to ${cutoff.year()}
 set month of cutoff to ${cutoff.month() + 1}
 set day of cutoff to ${cutoff.date()}
@@ -258,11 +336,11 @@ set time of cutoff to ${cutoff.diff(cutoff.clone().startOf("day"), "seconds")}
 set sep to ASCII character 30
 set out to ""
 tell application "Things3"
-  set completedItems to to dos of list "Logbook" whose status is completed and completion date > cutoff
+  set completedItems to to dos of list "Logbook" whose status is completed and completion date >= cutoff
   repeat with taskItem in completedItems
     set out to out & (_private_experimental_ json of taskItem) & sep
   end repeat
-  set canceledItems to to dos of list "Logbook" whose status is canceled and cancellation date > cutoff
+  set canceledItems to to dos of list "Logbook" whose status is canceled and cancellation date >= cutoff
   repeat with taskItem in canceledItems
     set out to out & (_private_experimental_ json of taskItem) & sep
   end repeat
@@ -276,13 +354,18 @@ function toUnixTime(dateString?: string): number {
     return 0;
   }
 
-  return Math.floor(new Date(dateString).getTime() / 1000);
+  const timestampMs = new Date(dateString).getTime();
+  return Number.isFinite(timestampMs) ? Math.floor(timestampMs / 1000) : 0;
 }
 
-function buildTaskRecordsFromAppleScriptJson(
+export function buildTaskRecordsFromAppleScriptJson(
   records: IThingsAppleScriptRecord[]
 ): ITaskRecord[] {
   return records.flatMap((record) => {
+    if (!record || typeof record.id !== "string" || !record.id) {
+      return [];
+    }
+
     const isCancelled = record.status === "canceled";
     const stopDate = toUnixTime(
       isCancelled ? record.cancellationDate : record.completionDate
@@ -344,7 +427,7 @@ async function getTasksFromThingsAppleScript(
     source: "applescript",
     cutoffTime: cutoff.unix(),
     isLimited: latestSyncTime === 0,
-    repairLookbackDays: moment().startOf("day").diff(cutoff, "days"),
+    repairLookbackDays: getCalendarDayDiff(moment().startOf("day"), cutoff),
   };
 }
 
@@ -352,49 +435,66 @@ export function buildTasksFromSQLRecords(
   taskRecords: ITaskRecord[],
   checklistRecords: IChecklistItemRecord[]
 ): ITask[] {
-  const tasks: Record<string, ITask> = {};
+  const tasks = new Map<string, ITask>();
   taskRecords.forEach(({ tag, ...task }) => {
     const id = task.uuid;
-    const { status, title, ...other } = task;
-
-    if (tasks[id]) {
-      if (tag && !tasks[id].tags.includes(tag)) {
-        tasks[id].tags.push(tag);
-      }
-    } else {
-      tasks[id] = {
-        ...other,
-        cancelled: STATUS_CANCELLED === Number.parseInt(status),
-        title: (title || "").trimEnd(),
-        subtasks: [],
-        tags: tag ? [tag] : [],
-      };
-    }
-  });
-
-  checklistRecords.forEach(({ taskId, title, stopDate }) => {
-    const task = tasks[taskId];
-    const subtaskTitle = (title || "").trimEnd();
-    if (!subtaskTitle) {
+    if (!id) {
       return;
     }
 
-    const subtask = {
-      completed: !!stopDate,
-      title: subtaskTitle,
-    };
+    const { status, title, startDate, stopDate, area, project, notes } = task;
+    const existing = tasks.get(id);
 
-    // checklist item might be completed before task
-    if (task) {
-      if (task.subtasks) {
-        task.subtasks.push(subtask);
-      } else {
-        task.subtasks = [subtask];
+    if (existing) {
+      if (tag && !existing.tags.includes(tag)) {
+        existing.tags.push(tag);
       }
+    } else {
+      tasks.set(id, {
+        uuid: id,
+        notes: notes || "",
+        area: area || undefined,
+        project: project || undefined,
+        startDate: toFiniteNumber(startDate),
+        stopDate: toFiniteNumber(stopDate),
+        cancelled: STATUS_CANCELLED === Number.parseInt(String(status), 10),
+        title: (title || "").trimEnd(),
+        subtasks: [],
+        tags: tag ? [tag] : [],
+      });
     }
   });
 
-  return Object.values(tasks).sort((a, b) => {
+  const seenChecklistUuids = new Map<string, Set<string>>();
+
+  checklistRecords.forEach(({ uuid, taskId, title, stopDate }) => {
+    const task = tasks.get(taskId);
+    const subtaskTitle = (title || "").trimEnd();
+    if (!task || !subtaskTitle) {
+      return;
+    }
+
+    if (uuid) {
+      let seenForTask = seenChecklistUuids.get(taskId);
+      if (!seenForTask) {
+        seenForTask = new Set<string>();
+        seenChecklistUuids.set(taskId, seenForTask);
+      }
+      if (seenForTask.has(uuid)) {
+        return;
+      }
+      seenForTask.add(uuid);
+    }
+
+    const subtask = {
+      completed: toFiniteNumber(stopDate) > 0,
+      title: subtaskTitle,
+    };
+
+    task.subtasks.push(subtask);
+  });
+
+  return Array.from(tasks.values()).sort((a, b) => {
     const stopDateDiff = b.stopDate - a.stopDate;
     if (stopDateDiff !== 0) {
       return stopDateDiff;
@@ -403,111 +503,201 @@ export function buildTasksFromSQLRecords(
   });
 }
 
-async function getTasksFromThingsDb(
-  latestSyncTime: number
-): Promise<ITaskRecord[]> {
-  return querySqliteDB<ITaskRecord>(
-    getThingsSqlitePath(),
-    `SELECT
-        TMTask.uuid as uuid,
-        TMTask.title as title,
-        TMTask.notes as notes,
-        TMTask.startDate as startDate,
-        TMTask.stopDate as stopDate,
-        TMTask.status as status,
+function buildTasksPageQuery(
+  cutoffTime: number,
+  batchLimit: number,
+  cursor: ITaskPageCursor | null
+): string {
+  const safeCutoff = toFiniteNumber(cutoffTime);
+  const safeLimit = Math.max(1, Math.floor(batchLimit));
+
+  const cursorPredicate = cursor
+    ? `(
+        TMTask.stopDate > COALESCE(
+          (SELECT stopDate FROM TMTask WHERE uuid = '${escapeSqlString(cursor.uuid)}'),
+          ${toFiniteNumber(cursor.stopDate)}
+        )
+        OR (
+          TMTask.stopDate = COALESCE(
+            (SELECT stopDate FROM TMTask WHERE uuid = '${escapeSqlString(cursor.uuid)}'),
+            ${toFiniteNumber(cursor.stopDate)}
+          )
+          AND TMTask.uuid > '${escapeSqlString(cursor.uuid)}'
+        )
+      )`
+    : `TMTask.stopDate >= ${safeCutoff}`;
+
+  return `WITH paged_tasks AS (
+        SELECT
+            TMTask.uuid as uuid,
+            TMTask.title as title,
+            TMTask.notes as notes,
+            TMTask.startDate as startDate,
+            TMTask.stopDate as stopDate,
+            TMTask.status as status,
+            TMTask.area as area,
+            TMTask.project as project,
+            TMTask.heading as heading
+        FROM
+            TMTask
+        WHERE
+            TMTask.trashed = 0
+            AND TMTask.uuid IS NOT NULL
+            AND TMTask.stopDate IS NOT NULL
+            AND ${cursorPredicate}
+        ORDER BY
+            TMTask.stopDate ASC,
+            TMTask.uuid ASC
+        LIMIT ${safeLimit}
+    )
+    SELECT
+        paged_tasks.uuid as uuid,
+        paged_tasks.title as title,
+        paged_tasks.notes as notes,
+        paged_tasks.startDate as startDate,
+        paged_tasks.stopDate as stopDate,
+        paged_tasks.status as status,
         TMArea.title as area,
         TMTag.title as tag,
         TMProject.title as project
     FROM
-        TMTask
+        paged_tasks
     LEFT JOIN TMTaskTag
-        ON TMTaskTag.tasks = TMTask.uuid
+        ON TMTaskTag.tasks = paged_tasks.uuid
     LEFT JOIN TMTag
         ON TMTag.uuid = TMTaskTag.tags
-    LEFT JOIN TMArea
-        ON TMTask.area = TMArea.uuid
+    LEFT JOIN TMTask TMHeading
+        ON TMHeading.uuid = paged_tasks.heading
     LEFT JOIN TMTask TMProject
-        ON TMProject.uuid = TMTask.project
-    WHERE
-        TMTask.trashed = 0
-        AND TMTask.stopDate IS NOT NULL
-        AND TMTask.stopDate > ${latestSyncTime}
+        ON TMProject.uuid = COALESCE(paged_tasks.project, TMHeading.project)
+    LEFT JOIN TMArea
+        ON TMArea.uuid = COALESCE(paged_tasks.area, TMProject.area)
     ORDER BY
-        TMTask.stopDate
-    LIMIT ${TASK_FETCH_LIMIT}
-        `
-  );
+        paged_tasks.stopDate ASC,
+        paged_tasks.uuid ASC,
+        TMTag.title ASC`;
 }
 
-async function getChecklistItemsThingsDb(
-  latestSyncTime: number
-): Promise<IChecklistItemRecord[]> {
-  return querySqliteDB<IChecklistItemRecord>(
-    getThingsSqlitePath(),
-    `SELECT
-        task as taskId,
-        title as title,
-        stopDate as stopDate
-    FROM
-        TMChecklistItem
-    WHERE
-        stopDate > ${latestSyncTime}
-        AND title IS NOT ""
-    ORDER BY
-        stopDate
-    LIMIT ${TASK_FETCH_LIMIT}
-        `
-  );
+function normalizeRawTaskRecord(raw: ITaskRecord): ITaskRecord {
+  return {
+    uuid: String(raw.uuid ?? ""),
+    title: raw.title ?? "",
+    notes: raw.notes ?? "",
+    area: raw.area || undefined,
+    project: raw.project || undefined,
+    startDate: toFiniteNumber(raw.startDate),
+    stopDate: toFiniteNumber(raw.stopDate),
+    status: String(raw.status ?? ""),
+    tag: raw.tag || undefined,
+  };
 }
 
-async function getTasksFromThingsSqlite(
-  latestSyncTime: number
+function normalizeRawChecklistRecord(
+  raw: IChecklistItemRecord
+): IChecklistItemRecord {
+  return {
+    uuid: String(raw.uuid ?? ""),
+    taskId: String(raw.taskId ?? ""),
+    title: String(raw.title ?? ""),
+    startDate: toFiniteNumber(raw.startDate),
+    stopDate: toFiniteNumber(raw.stopDate),
+  };
+}
+
+export async function getTasksFromThingsSqlite(
+  cutoffTime: number,
+  options: ISqliteFetchOptions = {}
 ): Promise<ITaskRecord[]> {
-  const moment = getMoment();
+  const dbPath = options.dbPath ?? findThingsSqlitePath();
+  const batchLimit = Math.max(1, Math.floor(options.batchLimit ?? TASK_FETCH_LIMIT));
+  const querySqlite: SqliteQueryFn = options.querySqlite ?? querySqliteDB;
   const taskRecords: ITaskRecord[] = [];
-  let isSyncCompleted = false;
-  let stopTime = moment.unix(latestSyncTime).startOf("day").unix();
+  let cursor: ITaskPageCursor | null = null;
 
-  while (!isSyncCompleted) {
+  for (;;) {
     console.debug("[Things Toolkit] fetching tasks from sqlite db...");
 
-    const batch = await getTasksFromThingsDb(stopTime);
+    const rawBatch: ITaskRecord[] = await querySqlite<ITaskRecord>(
+      dbPath,
+      buildTasksPageQuery(cutoffTime, batchLimit, cursor)
+    );
+    const batch: ITaskRecord[] = rawBatch.map(normalizeRawTaskRecord);
+    const batchTaskUuids = new Set<string>();
+    let lastCursor: ITaskPageCursor | null = null;
 
-    isSyncCompleted = batch.length < TASK_FETCH_LIMIT;
-    const lastStopDate = getLastStopDate(batch);
-    if (lastStopDate) {
-      stopTime = lastStopDate;
+    for (const record of batch) {
+      if (record.uuid) {
+        batchTaskUuids.add(record.uuid);
+        lastCursor = { stopDate: record.stopDate, uuid: record.uuid };
+      }
     }
 
     taskRecords.push(...batch);
     console.debug(
-      `[Things Toolkit] fetched ${batch.length} tasks from sqlite db`
+      `[Things Toolkit] fetched ${batchTaskUuids.size} tasks (${batch.length} rows) from sqlite db`
     );
+
+    if (
+      batchTaskUuids.size < batchLimit ||
+      !lastCursor ||
+      (cursor && lastCursor.uuid === cursor.uuid)
+    ) {
+      break;
+    }
+
+    cursor = lastCursor;
   }
 
   return taskRecords;
 }
 
-async function getChecklistItemsFromThingsSqlite(
-  latestSyncTime: number
+export async function getChecklistItemsFromThingsSqlite(
+  taskUuids: string[],
+  options: IChecklistFetchOptions = {}
 ): Promise<IChecklistItemRecord[]> {
-  const checklistItems: IChecklistItemRecord[] = [];
-  let isSyncCompleted = false;
-  let stopTime = latestSyncTime;
+  const uniqueTaskUuids = Array.from(new Set(taskUuids.filter(Boolean)));
+  if (uniqueTaskUuids.length === 0) {
+    return [];
+  }
 
-  while (!isSyncCompleted) {
+  const dbPath = options.dbPath ?? findThingsSqlitePath();
+  const taskBatchSize = Math.max(
+    1,
+    Math.floor(options.taskBatchSize ?? CHECKLIST_TASK_BATCH_SIZE)
+  );
+  const querySqlite: SqliteQueryFn = options.querySqlite ?? querySqliteDB;
+  const checklistItems: IChecklistItemRecord[] = [];
+
+  for (let offset = 0; offset < uniqueTaskUuids.length; offset += taskBatchSize) {
+    const chunk = uniqueTaskUuids.slice(offset, offset + taskBatchSize);
+    const inClause = chunk
+      .map((uuid) => `'${escapeSqlString(uuid)}'`)
+      .join(", ");
+
     console.debug(
       "[Things Toolkit] fetching checklist items from sqlite db..."
     );
 
-    const batch = await getChecklistItemsThingsDb(stopTime);
+    const rawBatch = await querySqlite<IChecklistItemRecord>(
+      dbPath,
+      `SELECT
+          TMChecklistItem.uuid as uuid,
+          TMChecklistItem.task as taskId,
+          TMChecklistItem.title as title,
+          TMChecklistItem.stopDate as stopDate
+      FROM
+          TMChecklistItem
+      WHERE
+          TMChecklistItem.task IN (${inClause})
+          AND TMChecklistItem.title IS NOT NULL
+          AND TRIM(TMChecklistItem.title) != ''
+      ORDER BY
+          TMChecklistItem.task ASC,
+          TMChecklistItem."index" ASC,
+          TMChecklistItem.uuid ASC`
+    );
 
-    isSyncCompleted = batch.length < TASK_FETCH_LIMIT;
-    const lastStopDate = getLastStopDate(batch);
-    if (lastStopDate) {
-      stopTime = lastStopDate;
-    }
-
+    const batch = rawBatch.map(normalizeRawChecklistRecord);
     checklistItems.push(...batch);
     console.debug(
       `[Things Toolkit] fetched ${batch.length} checklist items from sqlite db`
@@ -541,8 +731,14 @@ export async function fetchThingsToolkit(
   }
 
   try {
-    const taskRecords = await getTasksFromThingsSqlite(cutoffTime);
-    const checklistRecords = await getChecklistItemsFromThingsSqlite(cutoffTime);
+    const dbPath = findThingsSqlitePath();
+    const taskRecords = await getTasksFromThingsSqlite(cutoffTime, { dbPath });
+    const taskUuids = Array.from(
+      new Set(taskRecords.map((record) => record.uuid).filter(Boolean))
+    );
+    const checklistRecords = await getChecklistItemsFromThingsSqlite(taskUuids, {
+      dbPath,
+    });
 
     return {
       accessStatus: buildAccessStatus(
@@ -555,7 +751,7 @@ export async function fetchThingsToolkit(
       source: "sqlite",
       cutoffTime,
       isLimited: false,
-      repairLookbackDays: moment().startOf("day").diff(cutoff, "days"),
+      repairLookbackDays: getCalendarDayDiff(moment().startOf("day"), cutoff),
     };
   } catch (err) {
     if (accessMode === "sqlite") {

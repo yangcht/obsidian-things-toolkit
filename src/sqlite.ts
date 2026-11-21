@@ -1,8 +1,11 @@
 import { parse } from "papaparse";
 
-import { getChildProcessModule } from "./nodeUtils";
+import {
+  getChildProcessModule,
+  type ChildProcessModuleLike,
+} from "./nodeUtils";
 
-export const TASK_FETCH_LIMIT = 1000;
+const SQLITE_BUSY_TIMEOUT_MS = 5000;
 
 interface ISpawnResults {
   stdOut: string[];
@@ -10,12 +13,22 @@ interface ISpawnResults {
   code: number | null;
 }
 
-function chunkToString(chunk: unknown): string {
-  return typeof chunk === "string" ? chunk : String(chunk);
+export function decodeStreamChunk(decoder: TextDecoder, chunk: unknown): string {
+  if (typeof chunk === "string") {
+    return chunk;
+  }
+  if (chunk instanceof Uint8Array) {
+    return decoder.decode(chunk, { stream: true });
+  }
+  return String(chunk);
 }
 
 function parseCSV<T>(csv: string[]): T[] {
   const lines = csv.join("");
+  if (!lines.trim()) {
+    return [];
+  }
+
   const result = parse<T>(lines, {
     dynamicTyping: false,
     header: true,
@@ -27,54 +40,70 @@ function parseCSV<T>(csv: string[]): T[] {
 
 async function handleSqliteQuery(
   dbPath: string,
-  query: string
+  query: string,
+  childProcess: ChildProcessModuleLike = getChildProcessModule()
 ): Promise<ISpawnResults> {
   return new Promise((done) => {
     const stdOut: string[] = [];
     const stdErr: string[] = [];
+    const stdOutDecoder = new TextDecoder("utf-8");
+    const stdErrDecoder = new TextDecoder("utf-8");
     let settled = false;
 
-    const finish = (result: ISpawnResults) => {
+    const finish = (code: number | null) => {
       if (!settled) {
         settled = true;
-        done(result);
+        const trailingOut = stdOutDecoder.decode();
+        if (trailingOut) {
+          stdOut.push(trailingOut);
+        }
+        const trailingErr = stdErrDecoder.decode();
+        if (trailingErr) {
+          stdErr.push(trailingErr);
+        }
+        done({ stdErr, stdOut, code });
       }
     };
 
-    const childProcess = getChildProcessModule();
-    const spawned = childProcess.spawn(
-      "sqlite3",
-      ["-csv", "-header", "-readonly", dbPath, query],
-      { detached: true }
-    );
+    const spawned = childProcess.spawn("sqlite3", [
+      "-csv",
+      "-header",
+      "-readonly",
+      "-cmd",
+      `.timeout ${SQLITE_BUSY_TIMEOUT_MS}`,
+      dbPath,
+      query,
+    ]);
 
     spawned.stdout.on("data", (chunk: unknown) => {
-      stdOut.push(chunkToString(chunk));
+      stdOut.push(decodeStreamChunk(stdOutDecoder, chunk));
     });
 
     spawned.stderr.on("data", (chunk: unknown) => {
-      stdErr.push(chunkToString(chunk));
+      stdErr.push(decodeStreamChunk(stdErrDecoder, chunk));
     });
 
     spawned.on("error", (err: Error) => {
       stdErr.push(err.stack ?? err.message);
+      finish(null);
     });
 
-    spawned.on("close", (code: number | null) =>
-      finish({ stdErr, stdOut, code })
-    );
-
-    spawned.on("exit", (code: number | null) =>
-      finish({ stdErr, stdOut, code })
-    );
+    spawned.on("close", (code: number | null) => {
+      finish(code);
+    });
   });
 }
 
 export async function querySqliteDB<T>(
   dbPath: string,
-  query: string
+  query: string,
+  childProcess?: ChildProcessModuleLike
 ): Promise<T[]> {
-  const { stdOut, stdErr, code } = await handleSqliteQuery(dbPath, query);
+  const { stdOut, stdErr, code } = await handleSqliteQuery(
+    dbPath,
+    query,
+    childProcess
+  );
 
   if (stdErr.length || code !== 0) {
     const error = stdErr.join("") || `sqlite3 exited with code ${String(code)}`;

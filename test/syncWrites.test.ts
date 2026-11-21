@@ -83,3 +83,51 @@ test("uses unsaved editor contents and preserves trailing text", async () => {
   assert.ok(contents.endsWith("\nPersonal reflection."));
   assert.ok(contents.includes("[Renamed]"));
 });
+
+test("editor and vault paths produce identical output when consolidating a duplicate section at EOF", async () => {
+  const initialContents = [
+    "<!-- things-toolkit-logbook:start -->",
+    "## Things",
+    "- [x] [Task](things:///show?id=task)",
+    "<!-- things-toolkit-logbook:end -->",
+    "## Legacy Things",
+    "- [x] [Task](things:///show?id=task)",
+  ].join("\n");
+
+  let vaultContents = initialContents;
+  const vaultApp = {
+    workspace: { iterateAllLeaves: () => {} },
+    vault: {
+      process: async (_file: TFile, update: (value: string) => string) => {
+        vaultContents = update(vaultContents);
+      },
+    },
+  } as unknown as App;
+
+  let editorContents = initialContents;
+  const editor = {
+    getValue: () => editorContents,
+    replaceRange: (text: string, from: { line: number; ch: number }, to: { line: number; ch: number }) => {
+      const offset = (position: { line: number; ch: number }) =>
+        editorContents.split("\n").slice(0, position.line).reduce((sum, line) => sum + line.length + 1, 0) + position.ch;
+      editorContents = editorContents.slice(0, offset(from)) + text + editorContents.slice(offset(to));
+    },
+  } as unknown as Editor;
+  const editorApp = {
+    workspace: {
+      iterateAllLeaves: (callback: (leaf: unknown) => void) => {
+        callback({ view: { isMarkdown: true, file, editor } });
+        // Second view without editor must not clobber the valid editor
+        callback({ view: { isMarkdown: true, file, editor: undefined } });
+      },
+    },
+    vault: {
+      process: () => { throw new Error("Must use editor edits"); },
+    },
+  } as unknown as App;
+
+  assert.equal(await utilities.updateSection(vaultApp, file, "## Things", section), true);
+  assert.equal(await utilities.updateSection(editorApp, file, "## Things", section), true);
+  assert.equal(editorContents, vaultContents);
+  assert.equal(await utilities.updateSection(editorApp, file, "## Things", section), false);
+});

@@ -9,7 +9,7 @@ export const LOGBOOK_SECTION_END_MARKER =
   "<!-- things-toolkit-logbook:end -->";
 
 const THINGS_TASK_LINE_REGEX =
-  /^- \[[ xXcC]\] .*things:\/\/\/show\?id=([^\s)]+)/;
+  /^- \[[^\]]+\] .*things:\/\/\/show\?id=([^\s)]+)/;
 
 export interface SectionRange {
   startLine: number;
@@ -26,6 +26,18 @@ export interface LogbookSectionUpdate extends SectionContentUpdate {
   managedSection: string;
   rangesToUpdate: SectionRange[];
   replacementRange: SectionRange | null;
+}
+
+function detectLineEnding(contents: string): "\r\n" | "\n" {
+  return contents.includes("\r\n") ? "\r\n" : "\n";
+}
+
+function normalizeLineEndings(contents: string): string {
+  return contents.replace(/\r\n?/g, "\n");
+}
+
+function applyLineEnding(contents: string, lineEnding: "\r\n" | "\n"): string {
+  return lineEnding === "\r\n" ? contents.replace(/\n/g, "\r\n") : contents;
 }
 
 export function updateSectionContents(
@@ -55,25 +67,40 @@ export function buildLogbookSectionUpdate(
     throw new Error(`Invalid logbook section heading: ${heading}`);
   }
 
+  const lineEnding = detectLineEnding(fileContents);
+  const normalizedFileContents = normalizeLineEndings(fileContents);
   const managedSection = toManagedLogbookSection(sectionContents);
-  const fileLines = fileContents.split("\n");
-  const renderedTaskIds = extractThingsTaskIds(sectionContents.split("\n"));
-  const markedRanges = findMarkedLogbookSectionRanges(fileLines);
+  const fileLines = normalizedFileContents.split("\n");
+  const fencedLines = getFencedCodeLineFlags(fileLines);
+  const renderedTaskIds = extractThingsTaskIds(
+    normalizeLineEndings(sectionContents).split("\n")
+  );
+  const markedRanges = findMarkedLogbookSectionRanges(fileLines, fencedLines);
   // A heading inside a marked block must not extend past its closing marker.
   const isOutsideMarkedSections = (range: SectionRange): boolean =>
     !markedRanges.some(
       (marked) => range.startLine >= marked.startLine && range.startLine < marked.endLine
     );
-  const exactHeadingRanges = findHeadingSectionRanges(fileLines, headingLine)
-    .filter(isOutsideMarkedSections);
-  const legacyRanges = findGeneratedLogbookSectionRanges(fileLines).filter(
+  const exactHeadingRanges = findHeadingSectionRanges(
+    fileLines,
+    headingLine,
+    fencedLines
+  ).filter(isOutsideMarkedSections);
+  const legacyRanges = findGeneratedLogbookSectionRanges(
+    fileLines,
+    fencedLines
+  ).filter(
     (range) => isOutsideMarkedSections(range) && hasSharedTaskId(range.taskIds, renderedTaskIds)
   );
   const targetRange =
     markedRanges[0] || exactHeadingRanges[0] || legacyRanges[0];
 
   if (!targetRange) {
-    const nextContents = appendLogbookSection(fileContents, managedSection);
+    const nextNormalizedContents = appendLogbookSection(
+      normalizedFileContents,
+      managedSection
+    );
+    const nextContents = applyLineEnding(nextNormalizedContents, lineEnding);
     return {
       contents: nextContents,
       didChange: nextContents !== fileContents,
@@ -91,12 +118,13 @@ export function buildLogbookSectionUpdate(
   const replacementRange =
     rangesToUpdate.find((range) => isSameRange(range, targetRange)) ||
     rangesToUpdate[0];
-  const nextContents = replaceSectionRanges(
+  const nextNormalizedContents = replaceSectionRanges(
     fileLines,
     rangesToUpdate,
     replacementRange,
     managedSection
   );
+  const nextContents = applyLineEnding(nextNormalizedContents, lineEnding);
 
   return {
     contents: nextContents,
@@ -116,10 +144,11 @@ export function getSectionContents(
     return "";
   }
 
-  const fileLines = fileContents.split("\n");
-  const markedRange = findMarkedLogbookSectionRanges(fileLines)[0];
-  const exactRange = findHeadingSectionRanges(fileLines, headingLine)[0];
-  const legacyRange = findGeneratedLogbookSectionRanges(fileLines)[0];
+  const fileLines = normalizeLineEndings(fileContents).split("\n");
+  const fencedLines = getFencedCodeLineFlags(fileLines);
+  const markedRange = findMarkedLogbookSectionRanges(fileLines, fencedLines)[0];
+  const exactRange = findHeadingSectionRanges(fileLines, headingLine, fencedLines)[0];
+  const legacyRange = findGeneratedLogbookSectionRanges(fileLines, fencedLines)[0];
   const sectionRange = markedRange || exactRange || legacyRange;
 
   return sectionRange ? getSectionRangeContents(fileLines, sectionRange) : "";
@@ -145,9 +174,10 @@ export function getAppendText(
     return managedSection;
   }
 
-  const separator = fileContents.endsWith("\n\n")
+  const normalized = normalizeLineEndings(fileContents);
+  const separator = normalized.endsWith("\n\n")
     ? ""
-    : fileContents.endsWith("\n")
+    : normalized.endsWith("\n")
       ? "\n"
       : "\n\n";
   return `${separator}${managedSection}`;
@@ -157,9 +187,46 @@ export function isSameRange(left: SectionRange, right: SectionRange): boolean {
   return left.startLine === right.startLine && left.endLine === right.endLine;
 }
 
+function getFencedCodeLineFlags(fileLines: string[]): boolean[] {
+  const flags = new Array<boolean>(fileLines.length).fill(false);
+  let activeFenceChar: "`" | "~" | null = null;
+  let activeFenceLength = 0;
+
+  for (let i = 0; i < fileLines.length; i++) {
+    const line = fileLines[i];
+    if (activeFenceChar === null) {
+      const openMatch = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+      if (openMatch) {
+        const fence = openMatch[1];
+        const info = openMatch[2];
+        const fenceChar = fence[0] as "`" | "~";
+        if (fenceChar === "~" || !info.includes("`")) {
+          activeFenceChar = fenceChar;
+          activeFenceLength = fence.length;
+          flags[i] = true;
+        }
+      }
+      continue;
+    }
+
+    flags[i] = true;
+    const closeMatch = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
+    if (
+      closeMatch &&
+      closeMatch[1][0] === activeFenceChar &&
+      closeMatch[1].length >= activeFenceLength
+    ) {
+      activeFenceChar = null;
+      activeFenceLength = 0;
+    }
+  }
+
+  return flags;
+}
+
 function getLogbookHeadingLine(heading: string): string {
   return (
-    heading
+    normalizeLineEndings(heading)
       .split("\n")
       .map((line) => line.trim())
       .find((line) => getHeadingLevel(line) !== null) || heading.trim()
@@ -167,7 +234,7 @@ function getLogbookHeadingLine(heading: string): string {
 }
 
 function toManagedLogbookSection(sectionContents: string): string {
-  const trimmedSectionContents = sectionContents.trimEnd();
+  const trimmedSectionContents = normalizeLineEndings(sectionContents).trimEnd();
   if (
     trimmedSectionContents.startsWith(LOGBOOK_SECTION_START_MARKER) &&
     trimmedSectionContents.endsWith(LOGBOOK_SECTION_END_MARKER)
@@ -189,25 +256,41 @@ function appendLogbookSection(
   return `${fileContents}${getAppendText(fileContents, managedSection)}`;
 }
 
-function findMarkedLogbookSectionRanges(fileLines: string[]): SectionRange[] {
+function findMarkedLogbookSectionRanges(
+  fileLines: string[],
+  fencedLines: boolean[]
+): SectionRange[] {
   const ranges: SectionRange[] = [];
 
   for (let i = 0; i < fileLines.length; i++) {
-    if (fileLines[i].trim() !== LOGBOOK_SECTION_START_MARKER) {
+    if (fencedLines[i] || fileLines[i].trim() !== LOGBOOK_SECTION_START_MARKER) {
       continue;
     }
 
-    const endMarkerLine = fileLines.findIndex(
-      (line, index) =>
-        index > i && line.trim() === LOGBOOK_SECTION_END_MARKER
-    );
+    let endMarkerLine = -1;
+    for (let j = i + 1; j < fileLines.length; j++) {
+      if (fencedLines[j]) {
+        continue;
+      }
 
-    if (endMarkerLine === -1) {
-      continue;
+      const trimmed = fileLines[j].trim();
+      if (trimmed === LOGBOOK_SECTION_START_MARKER) {
+        // Ignore an unclosed start marker so user notes before the next block are preserved.
+        i = j - 1;
+        endMarkerLine = -2;
+        break;
+      }
+
+      if (trimmed === LOGBOOK_SECTION_END_MARKER) {
+        endMarkerLine = j;
+        break;
+      }
     }
 
-    ranges.push(createSectionRange(fileLines, i, endMarkerLine + 1));
-    i = endMarkerLine;
+    if (endMarkerLine >= 0) {
+      ranges.push(createSectionRange(fileLines, i, endMarkerLine + 1));
+      i = endMarkerLine;
+    }
   }
 
   return ranges;
@@ -215,12 +298,13 @@ function findMarkedLogbookSectionRanges(fileLines: string[]): SectionRange[] {
 
 function findHeadingSectionRanges(
   fileLines: string[],
-  headingLine: string
+  headingLine: string,
+  fencedLines: boolean[]
 ): SectionRange[] {
   const ranges: SectionRange[] = [];
 
   for (let i = 0; i < fileLines.length; i++) {
-    if (fileLines[i].trim() !== headingLine) {
+    if (fencedLines[i] || fileLines[i].trim() !== headingLine) {
       continue;
     }
 
@@ -233,7 +317,7 @@ function findHeadingSectionRanges(
       createSectionRange(
         fileLines,
         i,
-        findSectionEndLine(fileLines, i, headingLevel)
+        findSectionEndLine(fileLines, i, headingLevel, fencedLines)
       )
     );
   }
@@ -241,16 +325,23 @@ function findHeadingSectionRanges(
   return ranges;
 }
 
-function findGeneratedLogbookSectionRanges(fileLines: string[]): SectionRange[] {
+function findGeneratedLogbookSectionRanges(
+  fileLines: string[],
+  fencedLines: boolean[]
+): SectionRange[] {
   const ranges: SectionRange[] = [];
 
   for (let i = 0; i < fileLines.length; i++) {
+    if (fencedLines[i]) {
+      continue;
+    }
+
     const headingLevel = getHeadingLevel(fileLines[i]);
     if (!headingLevel) {
       continue;
     }
 
-    const endLine = findSectionEndLine(fileLines, i, headingLevel);
+    const endLine = findSectionEndLine(fileLines, i, headingLevel, fencedLines);
     const sectionLines = fileLines.slice(i, endLine);
     if (isGeneratedLogbookSection(sectionLines, headingLevel)) {
       ranges.push(createSectionRange(fileLines, i, endLine));
@@ -263,9 +354,14 @@ function findGeneratedLogbookSectionRanges(fileLines: string[]): SectionRange[] 
 function findSectionEndLine(
   fileLines: string[],
   startLine: number,
-  headingLevel: number
+  headingLevel: number,
+  fencedLines: boolean[]
 ): number {
   for (let i = startLine + 1; i < fileLines.length; i++) {
+    if (fencedLines[i]) {
+      continue;
+    }
+
     const currentHeadingLevel = getHeadingLevel(fileLines[i]);
     if (currentHeadingLevel && currentHeadingLevel <= headingLevel) {
       return i;

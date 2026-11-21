@@ -120,12 +120,7 @@
   flex-direction: column;
   justify-content: center;
   padding: 4px 2px;
-}
-
-.things-toolkit-review-day:hover,
-.things-toolkit-review-day.is-selected {
-  border-color: var(--interactive-accent);
-  color: var(--text-normal);
+  position: relative;
 }
 
 .things-toolkit-review-day.has-tasks {
@@ -142,6 +137,27 @@
 
 .things-toolkit-review-day.is-improve {
   border-color: var(--color-red);
+}
+
+.things-toolkit-review-day:hover {
+  border-color: var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.things-toolkit-review-day.is-selected {
+  box-shadow: 0 0 0 2px var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.things-toolkit-review-day.has-reflection::after {
+  background: var(--interactive-accent);
+  border-radius: 50%;
+  content: "";
+  height: 4px;
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 4px;
 }
 
 .things-toolkit-review-day-number {
@@ -210,7 +226,13 @@
 }
 
 .things-toolkit-review-actions {
+  align-items: center;
   margin-bottom: 0;
+}
+
+.things-toolkit-review-draft-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
 
 @media (max-height: 560px) {

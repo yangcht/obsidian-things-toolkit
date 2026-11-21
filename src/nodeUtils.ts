@@ -24,6 +24,7 @@ export interface ChildProcessModuleLike {
 export interface FsModuleLike {
   existsSync(filePath: string): boolean;
   readdirSync(dirPath: string): string[];
+  statSync?(filePath: string): { mtimeMs: number };
 }
 
 export interface OsModuleLike {
@@ -45,7 +46,10 @@ function requireDesktopModule<T>(moduleName: string): T {
     requireFns.push(require);
   }
 
-  const windowRequire = (window as DesktopWindow).require;
+  const windowRequire =
+    typeof window !== "undefined"
+      ? (window as DesktopWindow).require
+      : undefined;
   if (typeof windowRequire === "function") {
     requireFns.push(windowRequire.bind(window));
   }

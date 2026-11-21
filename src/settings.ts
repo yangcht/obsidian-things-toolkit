@@ -16,14 +16,31 @@ import {
   ThingsToolkitSource,
 } from "./things";
 import { getChildProcessModule } from "./nodeUtils";
+import {
+  DEFAULT_CANCELLED_MARK,
+  DEFAULT_REVIEW_WINDOW_DAYS,
+  DEFAULT_SECTION_HEADING,
+  DEFAULT_SYNC_FREQUENCY_SECONDS,
+  DEFAULT_TAG_PREFIX,
+  MAX_REVIEW_WINDOW_DAYS,
+  MIN_REVIEW_WINDOW_DAYS,
+  MIN_SYNC_FREQUENCY_SECONDS,
+  normalizePositiveInteger,
+  normalizeSectionHeading,
+} from "./settingsUtils";
 
-const moment = getMoment();
-
-export const DEFAULT_SECTION_HEADING = "## Things";
-export const DEFAULT_SYNC_FREQUENCY_SECONDS = 30 * 60; // Every 30 minutes
-export const DEFAULT_REVIEW_WINDOW_DAYS = 365;
-export const DEFAULT_TAG_PREFIX = "things/";
-export const DEFAULT_CANCELLED_MARK = "c";
+export {
+  DEFAULT_CANCELLED_MARK,
+  DEFAULT_REVIEW_WINDOW_DAYS,
+  DEFAULT_SECTION_HEADING,
+  DEFAULT_SYNC_FREQUENCY_SECONDS,
+  DEFAULT_TAG_PREFIX,
+  MAX_REVIEW_WINDOW_DAYS,
+  MIN_REVIEW_WINDOW_DAYS,
+  MIN_SYNC_FREQUENCY_SECONDS,
+  normalizePositiveInteger,
+  normalizeSectionHeading,
+};
 
 type EditableSettingKey =
   | "appleScriptFallbackLookbackDays"
@@ -235,7 +252,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
             control: {
               type: "number",
               key: "reviewWindowDays",
-              min: 30,
+              min: MIN_REVIEW_WINDOW_DAYS,
+              max: MAX_REVIEW_WINDOW_DAYS,
               step: 1,
             },
           },
@@ -283,16 +301,16 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         return;
       case "syncInterval":
         await this.toolkitPlugin.writeOptions({
-          syncInterval: this.normalizePositiveInteger(
+          syncInterval: normalizePositiveInteger(
             value,
-            60,
+            MIN_SYNC_FREQUENCY_SECONDS,
             DEFAULT_SYNC_FREQUENCY_SECONDS
           ),
         });
         return;
       case "appleScriptFallbackLookbackDays":
         await this.toolkitPlugin.writeOptions({
-          appleScriptFallbackLookbackDays: this.normalizePositiveInteger(
+          appleScriptFallbackLookbackDays: normalizePositiveInteger(
             value,
             1,
             DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS
@@ -301,10 +319,11 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         return;
       case "reviewWindowDays":
         await this.toolkitPlugin.writeOptions({
-          reviewWindowDays: this.normalizePositiveInteger(
+          reviewWindowDays: normalizePositiveInteger(
             value,
-            30,
-            DEFAULT_REVIEW_WINDOW_DAYS
+            MIN_REVIEW_WINDOW_DAYS,
+            DEFAULT_REVIEW_WINDOW_DAYS,
+            MAX_REVIEW_WINDOW_DAYS
           ),
         });
     }
@@ -312,6 +331,14 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
 
   refresh(): void {
     if (refreshDeclarativeSettings(this)) {
+      return;
+    }
+
+    if (
+      !this.containerEl ||
+      (typeof this.containerEl.isConnected === "boolean" &&
+        !this.containerEl.isConnected)
+    ) {
       return;
     }
 
@@ -367,14 +394,6 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
     ].includes(key);
   }
 
-  private normalizePositiveInteger(
-    value: unknown,
-    minimum: number,
-    fallback: number
-  ): number {
-    return Math.max(minimum, Math.floor(Number(value) || fallback));
-  }
-
   addSectionHeadingSetting(): void {
     new Setting(this.containerEl)
       .setName("Section heading")
@@ -403,9 +422,11 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
             return;
           }
 
-          const reviewWindowDays = Math.max(
-            30,
-            Math.floor(Number(target.value) || DEFAULT_REVIEW_WINDOW_DAYS)
+          const reviewWindowDays = normalizePositiveInteger(
+            target.value,
+            MIN_REVIEW_WINDOW_DAYS,
+            DEFAULT_REVIEW_WINDOW_DAYS,
+            MAX_REVIEW_WINDOW_DAYS
           );
 
           textfield.setValue(String(reviewWindowDays));
@@ -415,17 +436,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
   }
 
   normalizeSectionHeading(rawSectionHeading: string): string {
-    const sectionHeading = rawSectionHeading.trim();
-
-    if (!sectionHeading) {
-      return DEFAULT_SECTION_HEADING;
-    }
-
-    if (/^#{1,6}\s+\S/.test(sectionHeading)) {
-      return sectionHeading;
-    }
-
-    return `## ${sectionHeading.replace(/^#+\s*/, "")}`;
+    return normalizeSectionHeading(rawSectionHeading);
   }
 
   addSyncEnabledSetting(): void {
@@ -473,6 +484,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
   }
 
   private configureThingsAccessStatusSetting(setting: Setting): void {
+    const moment = getMoment();
     const accessStatus = this.toolkitPlugin.options.thingsAccessStatus;
     const statusText = accessStatus
       ? `${accessStatus.message} Checked ${moment
@@ -502,7 +514,10 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
   }
 
   openSystemSettings(url: string): void {
-    getChildProcessModule().spawn("open", [url]);
+    const child = getChildProcessModule().spawn("open", [url]);
+    child.on("error", (err: Error) => {
+      console.error("[Things Toolkit] Failed to open System Settings", err);
+    });
   }
 
   addDoesSyncNoteBodySetting(): void {
@@ -544,9 +559,10 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
             return;
           }
 
-          const syncInterval = Math.max(
-            60,
-            Math.floor(Number(target.value) || DEFAULT_SYNC_FREQUENCY_SECONDS)
+          const syncInterval = normalizePositiveInteger(
+            target.value,
+            MIN_SYNC_FREQUENCY_SECONDS,
+            DEFAULT_SYNC_FREQUENCY_SECONDS
           );
 
           textfield.setValue(String(syncInterval));
@@ -572,11 +588,10 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
             return;
           }
 
-          const appleScriptFallbackLookbackDays = Math.max(
+          const appleScriptFallbackLookbackDays = normalizePositiveInteger(
+            target.value,
             1,
-            Math.floor(
-              Number(target.value) || DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS
-            )
+            DEFAULT_APPLESCRIPT_FALLBACK_LOOKBACK_DAYS
           );
 
           textfield.setValue(String(appleScriptFallbackLookbackDays));
@@ -636,6 +651,7 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
   }
 
   private configureResetLastSyncSetting(setting: Setting): void {
+    const moment = getMoment();
     const { latestSyncTime } = this.toolkitPlugin.options;
     const { syncStatus } = this.toolkitPlugin;
     const syncTime =
@@ -669,8 +685,8 @@ export class ThingsToolkitSettingsTab extends PluginSettingTab {
         button.setButtonText("Reset sync history");
         button.setClass("mod-danger");
         button.setDisabled(syncStatus.isSyncing);
-        button.onClick(() => {
-          void this.toolkitPlugin.writeOptions({ latestSyncTime: 0 });
+        button.onClick(async () => {
+          await this.toolkitPlugin.writeOptions({ latestSyncTime: 0 });
           this.refresh();
         });
       })
